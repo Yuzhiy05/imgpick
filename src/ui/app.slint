@@ -82,18 +82,23 @@ export global PlanPageAdapter {
 }
 
 // 计划管理页面
-export component PlanPage inherits VerticalBox {
+export component PlanPage inherits VerticalLayout {
     in-out property <int> plan-id: 0;
     in-out property <string> plan-name: "";
+    alignment: start;
+    padding: 0;
+    spacing: 12px;
     
     Text {
         text: "添加计划";
         font-size: 18px;
         font-weight: 700;
         color: #1976D2;
+        height: 28px;
     }
     
     HorizontalLayout {
+        height: 40px;
         spacing: 8px;
         
         new-plan-input := LineEdit {
@@ -129,6 +134,7 @@ export component PlanPage inherits VerticalBox {
         VerticalLayout {
             padding: 12px;
             spacing: 8px;
+            alignment: start;
             
             Text {
                 text: "计划列表";
@@ -321,25 +327,45 @@ export component ExcelPage inherits VerticalBox {
 // 主应用组件
 export component App inherits Window {
     title: "图片标价工具";
-    preferred-height: 600px;
-    preferred-width: 800px;
     background: white;
+    height: 600px;
+    width: 800px;
     
     in-out property <int> current-plan-id: 0;
     in-out property <string> current-plan-name: "";
-    full-screen: false;
-    max-height: 600px;
     in-out property <string> current-page: "plan";
+    in-out property <bool> sidebar-expanded: true;
     
     HorizontalLayout {
+        spacing: 0;
+        
         // 侧边栏
         Rectangle {
-            width: 200px;
+            width: sidebar-expanded ? 200px : 48px;
             background: #f5f5f5;
             
             VerticalLayout {
                 padding: 8px;
                 spacing: 8px;
+                
+                // 侧边栏切换按钮
+                Rectangle {
+                    height: 36px;
+                    background: toggle-touch.has-hover ? #e0e0e0 : transparent;
+                    border-radius: 4px;
+                    
+                    toggle-touch := TouchArea {
+                        clicked => { sidebar-expanded = !sidebar-expanded; }
+                    }
+                    
+                    Text {
+                        text: sidebar-expanded ? "◀" : "▶";
+                        font-size: 16px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        color: #666;
+                    }
+                }
                 
                 // 应用标题
                 Rectangle {
@@ -347,11 +373,17 @@ export component App inherits Window {
                     background: #1976D2;
                     border-radius: 4px;
                     
-                    Text {
+                    if sidebar-expanded: Text {
                         text: "图片标价工具";
                         color: white;
                         font-size: 16px;
                         font-weight: 700;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    if !sidebar-expanded: Text {
+                        text: "📷";
+                        font-size: 20px;
                         horizontal-alignment: center;
                         vertical-alignment: center;
                     }
@@ -363,7 +395,11 @@ export component App inherits Window {
                     background: current-page == "plan" ? #e3f2fd : transparent;
                     border-radius: 4px;
                     
-                    Text {
+                    TouchArea {
+                        clicked => { current-page = "plan"; }
+                    }
+                    
+                    if sidebar-expanded: Text {
                         text: "📋 添加计划";
                         color: current-page == "plan" ? #1976D2 : #666;
                         font-size: 14px;
@@ -371,9 +407,12 @@ export component App inherits Window {
                         vertical-alignment: center;
                         x: 12px;
                     }
-                    
-                    TouchArea {
-                        clicked => { current-page = "plan"; }
+                    if !sidebar-expanded: Text {
+                        text: "📋";
+                        font-size: 18px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        color: current-page == "plan" ? #1976D2 : #666;
                     }
                 }
                 
@@ -384,7 +423,7 @@ export component App inherits Window {
                 }
                 
                 // 子功能标题
-                Text {
+                if sidebar-expanded: Text {
                     text: "当前计划功能";
                     font-size: 12px;
                     color: #999;
@@ -398,7 +437,15 @@ export component App inherits Window {
                     border-radius: 4px;
                     opacity: current-plan-id > 0 ? 1.0 : 0.5;
                     
-                    Text {
+                    TouchArea {
+                        clicked => {
+                            if current-plan-id > 0 {
+                                current-page = "pricing";
+                            }
+                        }
+                    }
+                    
+                    if sidebar-expanded: Text {
                         text: "🖼️ 图片标价";
                         color: current-page == "pricing" ? #1976D2 : #666;
                         font-size: 14px;
@@ -406,13 +453,12 @@ export component App inherits Window {
                         vertical-alignment: center;
                         x: 12px;
                     }
-                    
-                    TouchArea {
-                        clicked => {
-                            if current-plan-id > 0 {
-                                current-page = "pricing";
-                            }
-                        }
+                    if !sidebar-expanded: Text {
+                        text: "🖼️";
+                        font-size: 18px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        color: current-page == "pricing" ? #1976D2 : #666;
                     }
                 }
                 
@@ -423,7 +469,15 @@ export component App inherits Window {
                     border-radius: 4px;
                     opacity: current-plan-id > 0 ? 1.0 : 0.5;
                     
-                    Text {
+                    TouchArea {
+                        clicked => {
+                            if current-plan-id > 0 {
+                                current-page = "manage";
+                            }
+                        }
+                    }
+                    
+                    if sidebar-expanded: Text {
                         text: "📁 图片管理";
                         color: current-page == "manage" ? #1976D2 : #666;
                         font-size: 14px;
@@ -431,13 +485,12 @@ export component App inherits Window {
                         vertical-alignment: center;
                         x: 12px;
                     }
-                    
-                    TouchArea {
-                        clicked => {
-                            if current-plan-id > 0 {
-                                current-page = "manage";
-                            }
-                        }
+                    if !sidebar-expanded: Text {
+                        text: "📁";
+                        font-size: 18px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        color: current-page == "manage" ? #1976D2 : #666;
                     }
                 }
                 
@@ -448,7 +501,15 @@ export component App inherits Window {
                     border-radius: 4px;
                     opacity: current-plan-id > 0 ? 1.0 : 0.5;
                     
-                    Text {
+                    TouchArea {
+                        clicked => {
+                            if current-plan-id > 0 {
+                                current-page = "excel";
+                            }
+                        }
+                    }
+                    
+                    if sidebar-expanded: Text {
                         text: "📊 Excel配对";
                         color: current-page == "excel" ? #1976D2 : #666;
                         font-size: 14px;
@@ -456,13 +517,12 @@ export component App inherits Window {
                         vertical-alignment: center;
                         x: 12px;
                     }
-                    
-                    TouchArea {
-                        clicked => {
-                            if current-plan-id > 0 {
-                                current-page = "excel";
-                            }
-                        }
+                    if !sidebar-expanded: Text {
+                        text: "📊";
+                        font-size: 18px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        color: current-page == "excel" ? #1976D2 : #666;
                     }
                 }
             }

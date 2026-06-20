@@ -18,7 +18,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::rc::Rc;
 use slint::ComponentHandle;
-use slint::{VecModel, ModelRc};
+use slint::{VecModel, ModelRc, LogicalSize};
 
 fn load_plans(db: &Database) -> ModelRc<ui::PlanData> {
     let plans = match db.get_all_plans() {
@@ -43,6 +43,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create and run UI
     let app = ui::App::new()?;
     let weak = app.as_weak();
+    
+    // Set window size
+    let window = app.window();
+    window.set_size(LogicalSize::new(1000.0, 800.0));
     
     // Load initial plans
     let plans_model = load_plans(&db);
