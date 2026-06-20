@@ -1,0 +1,469 @@
+import { Button, VerticalBox, HorizontalBox, ListView, TextEdit, LineEdit, ComboBox, ScrollView, CheckBox } from "std-widgets.slint";
+
+// 计划项组件
+export component PlanItem inherits Rectangle {
+    in-out property <int> plan-id: 0;
+    in-out property <string> plan-name: "";
+    in-out property <bool> is-selected: false;
+    in-out property <bool> is-editing: false;
+    
+    callback clicked();
+    callback delete-clicked();
+    callback rename-clicked(string);
+    
+    height: 40px;
+    background: is-selected ? #e3f2fd : touch.has-hover ? #f5f5f5 : white;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: #e0e0e0;
+    
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+    
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 8px;
+        alignment: start;
+        
+        if is-editing: LineEdit {
+            text: plan-name;
+            horizontal-stretch: 1;
+            accepted(text) => { root.rename-clicked(text); }
+        }
+        if !is-editing: Text {
+            text: plan-name;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            color: is-selected ? #1976D2 : #333;
+            font-size: 14px;
+        }
+        
+        Button {
+            text: "✕";
+            width: 24px;
+            height: 24px;
+            visible: !is-editing;
+            clicked => { root.delete-clicked(); }
+        }
+    }
+}
+
+// 计划数据结构
+export struct PlanData {
+    id: int,
+    name: string,
+}
+
+// 计划页面适配器（全局单例）
+export global PlanPageAdapter {
+    in-out property <[PlanData]> plans: [];
+    
+    callback create-plan(string);
+    callback delete-plan(int);
+    callback rename-plan(int, string);
+    callback select-plan(int);
+}
+
+// 计划管理页面
+export component PlanPage inherits VerticalBox {
+    in-out property <int> plan-id: 0;
+    in-out property <string> plan-name: "";
+    
+    Text {
+        text: "添加计划";
+        font-size: 18px;
+        font-weight: 700;
+        color: #1976D2;
+    }
+    
+    HorizontalLayout {
+        spacing: 8px;
+        
+        new-plan-input := LineEdit {
+            placeholder-text: "输入新计划名称...";
+            horizontal-stretch: 1;
+            accepted(text) => {
+                if text != "" {
+                    PlanPageAdapter.create-plan(text);
+                    self.text = "";
+                }
+            }
+        }
+        
+        Button {
+            text: "添加";
+            width: 60px;
+            clicked => {
+                if new-plan-input.text != "" {
+                    PlanPageAdapter.create-plan(new-plan-input.text);
+                    new-plan-input.text = "";
+                }
+            }
+        }
+    }
+    
+    Rectangle {
+        vertical-stretch: 1;
+        background: #fafafa;
+        border-radius: 4px;
+        border-width: 1px;
+        border-color: #e0e0e0;
+        
+        VerticalLayout {
+            padding: 8px;
+            
+            Text {
+                text: "计划列表";
+                font-size: 14px;
+                font-weight: 600;
+                color: #666;
+                height: 24px;
+            }
+            
+            ListView {
+                for plan in PlanPageAdapter.plans: PlanItem {
+                    plan-id: plan.id;
+                    plan-name: plan.name;
+                    is-selected: plan.id == root.plan-id;
+                    clicked => { PlanPageAdapter.select-plan(plan.id); }
+                    delete-clicked => { PlanPageAdapter.delete-plan(plan.id); }
+                    rename-clicked(name) => { PlanPageAdapter.rename-plan(plan.id, name); }
+                }
+            }
+        }
+    }
+}
+
+// 图片标价页面
+export component PricingPage inherits VerticalBox {
+    in-out property <int> plan-id: 0;
+    
+    Text {
+        text: "图片标价";
+        font-size: 18px;
+        font-weight: 700;
+        color: #1976D2;
+    }
+    
+    HorizontalLayout {
+        spacing: 8px;
+        
+        Button {
+            text: "选择文件夹";
+            width: 100px;
+        }
+        
+        Button {
+            text: "上一张";
+            width: 70px;
+        }
+        
+        Button {
+            text: "下一张";
+            width: 70px;
+        }
+    }
+    
+    Rectangle {
+        vertical-stretch: 1;
+        background: #f0f0f0;
+        border-radius: 4px;
+        
+        Text {
+            text: "图片显示区域";
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            color: #999;
+        }
+    }
+    
+    HorizontalLayout {
+        spacing: 4px;
+        
+        Button { text: "4+"; width: 50px; }
+        Button { text: "3+"; width: 50px; }
+        Button { text: "2+"; width: 50px; }
+        Button { text: "1+/+"; width: 50px; }
+        Button { text: "-"; width: 50px; }
+        Button { text: "?"; width: 50px; }
+        Button { text: "M"; width: 50px; }
+    }
+    
+    HorizontalLayout {
+        spacing: 8px;
+        
+        Button {
+            text: "确认标价";
+            width: 80px;
+        }
+        
+        Button {
+            text: "跳过";
+            width: 60px;
+        }
+    }
+}
+
+// 图片管理页面
+export component ManagePage inherits VerticalBox {
+    in-out property <int> plan-id: 0;
+    
+    Text {
+        text: "图片管理";
+        font-size: 18px;
+        font-weight: 700;
+        color: #1976D2;
+    }
+    
+    HorizontalLayout {
+        spacing: 8px;
+        
+        Button {
+            text: "图片源";
+            width: 70px;
+        }
+        
+        Button {
+            text: "待标价";
+            width: 70px;
+        }
+        
+        Button {
+            text: "已标价";
+            width: 70px;
+        }
+        
+        Button {
+            text: "待处理";
+            width: 70px;
+        }
+    }
+    
+    Rectangle {
+        vertical-stretch: 1;
+        background: #f0f0f0;
+        border-radius: 4px;
+        
+        Text {
+            text: "图片列表区域";
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            color: #999;
+        }
+    }
+}
+
+// Excel配对页面
+export component ExcelPage inherits VerticalBox {
+    in-out property <int> plan-id: 0;
+    
+    Text {
+        text: "Excel配对";
+        font-size: 18px;
+        font-weight: 700;
+        color: #1976D2;
+    }
+    
+    HorizontalLayout {
+        spacing: 8px;
+        
+        Button {
+            text: "导入Excel";
+            width: 80px;
+        }
+        
+        Button {
+            text: "导出结果";
+            width: 80px;
+        }
+    }
+    
+    Rectangle {
+        vertical-stretch: 1;
+        background: #f0f0f0;
+        border-radius: 4px;
+        
+        Text {
+            text: "Excel数据和配对区域";
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            color: #999;
+        }
+    }
+}
+
+// 主应用组件
+export component App inherits Window {
+    title: "图片标价工具";
+    preferred-width: 1344px;
+    preferred-height: 648px;
+    background: white;
+    
+    in-out property <int> current-plan-id: 0;
+    in-out property <string> current-plan-name: "";
+    in-out property <string> current-page: "plan";
+    
+    HorizontalLayout {
+        // 侧边栏
+        Rectangle {
+            width: 200px;
+            background: #f5f5f5;
+            
+            VerticalLayout {
+                padding: 8px;
+                spacing: 8px;
+                
+                // 应用标题
+                Rectangle {
+                    height: 40px;
+                    background: #1976D2;
+                    border-radius: 4px;
+                    
+                    Text {
+                        text: "图片标价工具";
+                        color: white;
+                        font-size: 16px;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+                
+                // 计划管理按钮
+                Rectangle {
+                    height: 36px;
+                    background: current-page == "plan" ? #e3f2fd : transparent;
+                    border-radius: 4px;
+                    
+                    Text {
+                        text: "📋 添加计划";
+                        color: current-page == "plan" ? #1976D2 : #666;
+                        font-size: 14px;
+                        font-weight: current-page == "plan" ? 700 : 400;
+                        vertical-alignment: center;
+                        x: 12px;
+                    }
+                    
+                    TouchArea {
+                        clicked => { current-page = "plan"; }
+                    }
+                }
+                
+                // 分隔线
+                Rectangle {
+                    height: 1px;
+                    background: #e0e0e0;
+                }
+                
+                // 子功能标题
+                Text {
+                    text: "当前计划功能";
+                    font-size: 12px;
+                    color: #999;
+                    height: 20px;
+                }
+                
+                // 图片标价按钮
+                Rectangle {
+                    height: 36px;
+                    background: current-page == "pricing" ? #e3f2fd : transparent;
+                    border-radius: 4px;
+                    opacity: current-plan-id > 0 ? 1.0 : 0.5;
+                    
+                    Text {
+                        text: "🖼️ 图片标价";
+                        color: current-page == "pricing" ? #1976D2 : #666;
+                        font-size: 14px;
+                        font-weight: current-page == "pricing" ? 700 : 400;
+                        vertical-alignment: center;
+                        x: 12px;
+                    }
+                    
+                    TouchArea {
+                        clicked => {
+                            if current-plan-id > 0 {
+                                current-page = "pricing";
+                            }
+                        }
+                    }
+                }
+                
+                // 图片管理按钮
+                Rectangle {
+                    height: 36px;
+                    background: current-page == "manage" ? #e3f2fd : transparent;
+                    border-radius: 4px;
+                    opacity: current-plan-id > 0 ? 1.0 : 0.5;
+                    
+                    Text {
+                        text: "📁 图片管理";
+                        color: current-page == "manage" ? #1976D2 : #666;
+                        font-size: 14px;
+                        font-weight: current-page == "manage" ? 700 : 400;
+                        vertical-alignment: center;
+                        x: 12px;
+                    }
+                    
+                    TouchArea {
+                        clicked => {
+                            if current-plan-id > 0 {
+                                current-page = "manage";
+                            }
+                        }
+                    }
+                }
+                
+                // Excel配对按钮
+                Rectangle {
+                    height: 36px;
+                    background: current-page == "excel" ? #e3f2fd : transparent;
+                    border-radius: 4px;
+                    opacity: current-plan-id > 0 ? 1.0 : 0.5;
+                    
+                    Text {
+                        text: "📊 Excel配对";
+                        color: current-page == "excel" ? #1976D2 : #666;
+                        font-size: 14px;
+                        font-weight: current-page == "excel" ? 700 : 400;
+                        vertical-alignment: center;
+                        x: 12px;
+                    }
+                    
+                    TouchArea {
+                        clicked => {
+                            if current-plan-id > 0 {
+                                current-page = "excel";
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 主内容区域
+        Rectangle {
+            horizontal-stretch: 1;
+            background: white;
+            
+            VerticalLayout {
+                padding: 16px;
+                
+                if current-page == "plan": PlanPage {
+                    plan-id <=> current-plan-id;
+                    plan-name <=> current-plan-name;
+                }
+                if current-page == "pricing": PricingPage {
+                    plan-id <=> current-plan-id;
+                }
+                if current-page == "manage": ManagePage {
+                    plan-id <=> current-plan-id;
+                }
+                if current-page == "excel": ExcelPage {
+                    plan-id <=> current-plan-id;
+                }
+            }
+        }
+    }
+}

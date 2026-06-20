@@ -1,0 +1,22 @@
+[package]
+name = "imgpick"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[dependencies]
+slint = { version = "1.16.1", features = ["backend-winit", "renderer-software"] }
+rusqlite = { version = "0.31.0", features = ["bundled"] }
+calamine = "0.26.1"
+rfd = "0.14.1"
+image = "0.25.10"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+chrono = "0.4.45"
+tokio = { version = "1.52.3", features = ["full"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[build-dependencies]
+slint-build = "1.16.1"
