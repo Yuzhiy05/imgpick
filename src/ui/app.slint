@@ -130,6 +130,7 @@ export component PlanPage inherits VerticalLayout {
         border-radius: 8px;
         border-width: 1px;
         border-color: #e0e0e0;
+        clip: true;
         
         VerticalLayout {
             padding: 12px;
@@ -328,21 +329,36 @@ export component ExcelPage inherits VerticalBox {
 export component App inherits Window {
     title: "图片标价工具";
     background: white;
-    height: 600px;
-    width: 800px;
+    // 设置最小尺寸，允许窗口变大
+    min-height: 600px;
+    min-width: 800px;
     
+    // 当前选中的计划ID
     in-out property <int> current-plan-id: 0;
+    // 当前选中的计划名称
     in-out property <string> current-plan-name: "";
+    // 当前显示的页面
     in-out property <string> current-page: "plan";
+    // 侧边栏是否展开
     in-out property <bool> sidebar-expanded: true;
+    
+    // 侧边栏切换回调，用于通知Rust调整窗口大小
+    callback sidebar-toggled(bool);
     
     HorizontalLayout {
         spacing: 0;
         
-        // 侧边栏
+        // 侧边栏 - 支持展开/收起动画
         Rectangle {
-            width: sidebar-expanded ? 200px : 48px;
+            // 展开时120px，收起时48px
+            width: sidebar-expanded ? 120px : 48px;
             background: #f5f5f5;
+            
+            // 宽度变化动画：200ms缓入缓出
+            animate width {
+                duration: 200ms;
+                easing: ease-in-out;
+            }
             
             VerticalLayout {
                 padding: 8px;
@@ -355,7 +371,10 @@ export component App inherits Window {
                     border-radius: 4px;
                     
                     toggle-touch := TouchArea {
-                        clicked => { sidebar-expanded = !sidebar-expanded; }
+                        clicked => {
+                            sidebar-expanded = !sidebar-expanded;
+                            root.sidebar-toggled(sidebar-expanded);
+                        }
                     }
                     
                     Text {
@@ -532,6 +551,7 @@ export component App inherits Window {
         Rectangle {
             horizontal-stretch: 1;
             background: white;
+            clip: true;
             
             VerticalLayout {
                 padding: 16px;
