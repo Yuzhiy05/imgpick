@@ -154,3 +154,22 @@ tokio = { version = "1", features = ["full"] }
 2. 大量图片需考虑异步加载和内存管理
 3. 图片复制操作需显示进度
 4. Excel解析需处理各种格式异常
+
+## Git提交规范
+
+提交信息格式：`<type>: <description>`
+
+### type类型
+- `feat`: 新功能
+- `fix`: 修复bug
+- `docs`: 文档更新
+- `style`: 代码格式调整（不影响功能）
+- `refactor`: 重构（非新功能、非修复）
+- `perf`: 性能优化
+- `test`: 测试相关
+- `chore`: 构建、工具、依赖等杂项
+
+### 说明
+- type部分使用英文
+- description部分使用中文
+- 示例：`feat: 添加计划管理功能`、`fix: 修复图片显示问题`
