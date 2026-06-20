@@ -1,6 +1,6 @@
 import { Button, VerticalBox, HorizontalBox, ListView, TextEdit, LineEdit, ComboBox, ScrollView, CheckBox } from "std-widgets.slint";
 
-// 计划项组件
+// 计划项组件 - 卡片样式
 export component PlanItem inherits Rectangle {
     in-out property <int> plan-id: 0;
     in-out property <string> plan-name: "";
@@ -11,41 +11,56 @@ export component PlanItem inherits Rectangle {
     callback delete-clicked();
     callback rename-clicked(string);
     
-    height: 40px;
+    width: 160px;
+    height: 80px;
+    border-radius: 12px;
     background: is-selected ? #e3f2fd : touch.has-hover ? #f5f5f5 : white;
-    border-radius: 4px;
-    border-width: 1px;
-    border-color: #e0e0e0;
+    border-width: 2px;
+    border-color: is-selected ? #1976D2 : #e0e0e0;
+    clip: true;
     
     touch := TouchArea {
         clicked => { root.clicked(); }
     }
     
-    HorizontalLayout {
-        padding-left: 8px;
-        padding-right: 8px;
-        spacing: 8px;
-        alignment: start;
+    VerticalLayout {
+        padding: 0;
         
-        if is-editing: LineEdit {
-            text: plan-name;
-            horizontal-stretch: 1;
-            accepted(text) => { root.rename-clicked(text); }
-        }
-        if !is-editing: Text {
-            text: plan-name;
-            vertical-alignment: center;
-            horizontal-stretch: 1;
-            color: is-selected ? #1976D2 : #333;
-            font-size: 14px;
+        // 计划名称区域
+        Rectangle {
+            vertical-stretch: 1;
+            background: transparent;
+            
+            if is-editing: LineEdit {
+                text: plan-name;
+                horizontal-stretch: 1;
+                accepted(text) => { root.rename-clicked(text); }
+            }
+            if !is-editing: Text {
+                text: plan-name;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                color: is-selected ? #1976D2 : #333;
+                font-size: 13px;
+                overflow: elide;
+            }
         }
         
-        Button {
-            text: "✕";
-            width: 24px;
-            height: 24px;
-            visible: !is-editing;
-            clicked => { root.delete-clicked(); }
+        // 删除按钮区域
+        Rectangle {
+            height: 28px;
+            background: touch-del.has-hover ? #ffebee : transparent;
+            
+            touch-del := TouchArea {
+                clicked => { root.delete-clicked(); }
+            }
+            
+            Text {
+                text: "🗑️";
+                font-size: 16px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
         }
     }
 }
@@ -107,12 +122,13 @@ export component PlanPage inherits VerticalBox {
     Rectangle {
         vertical-stretch: 1;
         background: #fafafa;
-        border-radius: 4px;
+        border-radius: 8px;
         border-width: 1px;
         border-color: #e0e0e0;
         
         VerticalLayout {
-            padding: 8px;
+            padding: 12px;
+            spacing: 8px;
             
             Text {
                 text: "计划列表";
@@ -122,14 +138,22 @@ export component PlanPage inherits VerticalBox {
                 height: 24px;
             }
             
-            ListView {
-                for plan in PlanPageAdapter.plans: PlanItem {
-                    plan-id: plan.id;
-                    plan-name: plan.name;
-                    is-selected: plan.id == root.plan-id;
-                    clicked => { PlanPageAdapter.select-plan(plan.id); }
-                    delete-clicked => { PlanPageAdapter.delete-plan(plan.id); }
-                    rename-clicked(name) => { PlanPageAdapter.rename-plan(plan.id, name); }
+            Flickable {
+                vertical-stretch: 1;
+                
+                GridLayout {
+                    spacing: 12px;
+                    
+                    for plan[i] in PlanPageAdapter.plans: PlanItem {
+                        row: i / 4;
+                        col: mod(i, 4);
+                        plan-id: plan.id;
+                        plan-name: plan.name;
+                        is-selected: plan.id == root.plan-id;
+                        clicked => { PlanPageAdapter.select-plan(plan.id); }
+                        delete-clicked => { PlanPageAdapter.delete-plan(plan.id); }
+                        rename-clicked(name) => { PlanPageAdapter.rename-plan(plan.id, name); }
+                    }
                 }
             }
         }
@@ -297,12 +321,14 @@ export component ExcelPage inherits VerticalBox {
 // 主应用组件
 export component App inherits Window {
     title: "图片标价工具";
-    preferred-width: 1344px;
-    preferred-height: 648px;
+    preferred-height: 600px;
+    preferred-width: 800px;
     background: white;
     
     in-out property <int> current-plan-id: 0;
     in-out property <string> current-plan-name: "";
+    full-screen: false;
+    max-height: 600px;
     in-out property <string> current-page: "plan";
     
     HorizontalLayout {
