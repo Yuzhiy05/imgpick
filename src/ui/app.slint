@@ -1,6 +1,6 @@
 import { Button, VerticalBox, HorizontalBox, ListView, TextEdit, LineEdit, ComboBox, ScrollView, CheckBox } from "std-widgets.slint";
 
-// 计划项组件 - 卡片样式
+// 计划项组件 - 卡片样式（横向布局：名称在左，删除在右）
 export component PlanItem inherits Rectangle {
     in-out property <int> plan-id: 0;
     in-out property <string> plan-name: "";
@@ -11,9 +11,9 @@ export component PlanItem inherits Rectangle {
     callback delete-clicked();
     callback rename-clicked(string);
     
-    width: 160px;
-    height: 80px;
-    border-radius: 12px;
+    width: 140px;
+    height: 56px;
+    border-radius: 8px;
     background: is-selected ? #e3f2fd : touch.has-hover ? #f5f5f5 : white;
     border-width: 2px;
     border-color: is-selected ? #1976D2 : #e0e0e0;
@@ -23,12 +23,13 @@ export component PlanItem inherits Rectangle {
         clicked => { root.clicked(); }
     }
     
-    VerticalLayout {
+    HorizontalLayout {
         padding: 0;
+        spacing: 0;
         
         // 计划名称区域
         Rectangle {
-            vertical-stretch: 1;
+            horizontal-stretch: 1;
             background: transparent;
             
             if is-editing: LineEdit {
@@ -41,14 +42,14 @@ export component PlanItem inherits Rectangle {
                 horizontal-alignment: center;
                 vertical-alignment: center;
                 color: is-selected ? #1976D2 : #333;
-                font-size: 13px;
+                font-size: 12px;
                 overflow: elide;
             }
         }
         
-        // 删除按钮区域
+        // 删除按钮区域（右侧）
         Rectangle {
-            height: 28px;
+            width: 32px;
             background: touch-del.has-hover ? #ffebee : transparent;
             
             touch-del := TouchArea {
@@ -57,7 +58,7 @@ export component PlanItem inherits Rectangle {
             
             Text {
                 text: "🗑️";
-                font-size: 16px;
+                font-size: 14px;
                 horizontal-alignment: center;
                 vertical-alignment: center;
             }
@@ -124,10 +125,19 @@ export component PlanPage inherits Rectangle {
                     }
                 }
             }
+            
+            // 占位矩形：确保输入框宽度不随计划卡片数量变化
+            // 宽度 = 4卡片宽度(140*4) + 间距(12*3) - 按钮(60) - 间距(8) = 528px
+            Rectangle {
+                width: 528px;
+                background: transparent;
+            }
         }
         
         Rectangle {
             vertical-stretch: 1;
+            // 最小高度：4行计划卡片 (56px*4 + 间距12px*3) + 内边距12px*2 + 标题24px + 间距8px = 316px
+            min-height: 316px;
             background: #fafafa;
             border-radius: 8px;
             border-width: 1px;
