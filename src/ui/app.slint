@@ -82,84 +82,87 @@ export global PlanPageAdapter {
 }
 
 // 计划管理页面
-export component PlanPage inherits VerticalLayout {
+export component PlanPage inherits Rectangle {
     in-out property <int> plan-id: 0;
     in-out property <string> plan-name: "";
-    alignment: start;
-    padding: 0;
-    spacing: 12px;
     
-    Text {
-        text: "添加计划";
-        font-size: 18px;
-        font-weight: 700;
-        color: #1976D2;
-        height: 28px;
-    }
-    
-    HorizontalLayout {
-        height: 40px;
-        spacing: 8px;
+    VerticalLayout {
+        alignment: start;
+        padding: 0;
+        spacing: 12px;
         
-        new-plan-input := LineEdit {
-            placeholder-text: "输入新计划名称...";
-            horizontal-stretch: 1;
-            accepted(text) => {
-                if text != "" {
-                    PlanPageAdapter.create-plan(text);
-                    self.text = "";
-                }
-            }
+        Text {
+            text: "添加计划";
+            font-size: 18px;
+            font-weight: 700;
+            color: #1976D2;
+            height: 28px;
         }
         
-        Button {
-            text: "添加";
-            width: 60px;
-            clicked => {
-                if new-plan-input.text != "" {
-                    PlanPageAdapter.create-plan(new-plan-input.text);
-                    new-plan-input.text = "";
-                }
-            }
-        }
-    }
-    
-    Rectangle {
-        vertical-stretch: 1;
-        background: #fafafa;
-        border-radius: 8px;
-        border-width: 1px;
-        border-color: #e0e0e0;
-        clip: true;
-        
-        VerticalLayout {
-            padding: 12px;
+        HorizontalLayout {
+            height: 40px;
             spacing: 8px;
-            alignment: start;
             
-            Text {
-                text: "计划列表";
-                font-size: 14px;
-                font-weight: 600;
-                color: #666;
-                height: 24px;
+            new-plan-input := LineEdit {
+                placeholder-text: "输入新计划名称...";
+                horizontal-stretch: 1;
+                accepted(text) => {
+                    if text != "" {
+                        PlanPageAdapter.create-plan(text);
+                        self.text = "";
+                    }
+                }
             }
             
-            Flickable {
-                vertical-stretch: 1;
+            Button {
+                text: "添加";
+                width: 60px;
+                clicked => {
+                    if new-plan-input.text != "" {
+                        PlanPageAdapter.create-plan(new-plan-input.text);
+                        new-plan-input.text = "";
+                    }
+                }
+            }
+        }
+        
+        Rectangle {
+            vertical-stretch: 1;
+            background: #fafafa;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: #e0e0e0;
+            clip: true;
+            
+            VerticalLayout {
+                padding: 12px;
+                spacing: 8px;
+                alignment: start;
                 
-                GridLayout {
-                    spacing: 12px;
+                Text {
+                    text: "计划列表";
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: #666;
+                    height: 24px;
+                }
+                
+                Flickable {
+                    vertical-stretch: 1;
                     
-                    for plan[i] in PlanPageAdapter.plans: PlanItem {
-                        row: i / 4;
-                        col: mod(i, 4);
-                        plan-id: plan.id;
-                        plan-name: plan.name;
-                        is-selected: plan.id == root.plan-id;
-                        clicked => { PlanPageAdapter.select-plan(plan.id); }
-                        delete-clicked => { PlanPageAdapter.delete-plan(plan.id); }
-                        rename-clicked(name) => { PlanPageAdapter.rename-plan(plan.id, name); }
+                    GridLayout {
+                        spacing: 12px;
+                        
+                        for plan[i] in PlanPageAdapter.plans: PlanItem {
+                            row: i / 4;
+                            col: mod(i, 4);
+                            plan-id: plan.id;
+                            plan-name: plan.name;
+                            is-selected: plan.id == root.plan-id;
+                            clicked => { PlanPageAdapter.select-plan(plan.id); }
+                            delete-clicked => { PlanPageAdapter.delete-plan(plan.id); }
+                            rename-clicked(name) => { PlanPageAdapter.rename-plan(plan.id, name); }
+                        }
                     }
                 }
             }
