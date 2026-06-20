@@ -18,9 +18,9 @@ use std::path::Path;
 use std::sync::Arc;
 use std::rc::Rc;
 use slint::ComponentHandle;
-use slint::{VecModel, ModelRc, LogicalSize};
+use slint::{VecModel, LogicalSize};
 
-fn load_plans(db: &Database) -> ModelRc<ui::PlanData> {
+fn create_plans_model(db: &Database) -> Rc<VecModel<ui::PlanData>> {
     let plans = match db.get_all_plans() {
         Ok(plans) => plans.iter().map(|p| ui::PlanData {
             id: p.id as i32,
@@ -28,7 +28,18 @@ fn load_plans(db: &Database) -> ModelRc<ui::PlanData> {
         }).collect(),
         Err(_) => vec![],
     };
-    Rc::new(VecModel::from(plans)).into()
+    Rc::new(VecModel::from(plans))
+}
+
+fn refresh_plans(db: &Database, model: &VecModel<ui::PlanData>) {
+    let plans = match db.get_all_plans() {
+        Ok(plans) => plans.iter().map(|p| ui::PlanData {
+            id: p.id as i32,
+            name: p.name.clone().into(),
+        }).collect(),
+        Err(_) => vec![],
+    };
+    model.set_vec(plans);
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -48,13 +59,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let window = app.window();
     window.set_size(LogicalSize::new(1000.0, 800.0));
     
-    // Load initial plans
-    let plans_model = load_plans(&db);
-    app.global::<ui::PlanPageAdapter>().set_plans(plans_model);
+    // Load initial plans (使用共享VecModel，避免替换整个模型导致崩溃)
+    let plans_model = create_plans_model(&db);
+    app.global::<ui::PlanPageAdapter>().set_plans(plans_model.clone().into());
     
     // Set up callbacks
     let db_clone = db.clone();
     let weak_clone = weak.clone();
+    let plans_model_clone = plans_model.clone();
     app.global::<ui::PlanPageAdapter>().on_create_plan(move |name| {
         let name_str = name.to_string();
         if !name_str.is_empty() {
@@ -62,10 +74,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             match db.create_plan(&name_str) {
                 Ok(id) => {
                     println!("Created plan: {} with id: {}", name_str, id);
-                    if let Some(app) = weak_clone.upgrade() {
-                        let plans_model = load_plans(&db);
-                        app.global::<ui::PlanPageAdapter>().set_plans(plans_model);
-                    }
+                    refresh_plans(&db, &plans_model_clone);
                 }
                 Err(e) => eprintln!("Failed to create plan: {}", e),
             }
@@ -74,16 +83,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     let db_clone = db.clone();
     let weak_clone = weak.clone();
+    let plans_model_clone = plans_model.clone();
     app.global::<ui::PlanPageAdapter>().on_delete_plan(move |id| {
         let db = db_clone.clone();
         match db.delete_plan(id as i64) {
             Ok(_) => {
                 println!("Deleted plan: {}", id);
                 if let Some(app) = weak_clone.upgrade() {
-                    let plans_model = load_plans(&db);
-                    app.global::<ui::PlanPageAdapter>().set_plans(plans_model);
                     app.set_current_plan_id(0);
                     app.set_current_plan_name("".into());
+                    refresh_plans(&db, &plans_model_clone);
                 }
             }
             Err(e) => eprintln!("Failed to delete plan: {}", e),
@@ -91,16 +100,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     
     let db_clone = db.clone();
-    let weak_clone = weak.clone();
+    let plans_model_clone = plans_model.clone();
     app.global::<ui::PlanPageAdapter>().on_rename_plan(move |id, name| {
         let name_str = name.to_string();
         if !name_str.is_empty() {
             let db = db_clone.clone();
             println!("Rename plan {} to {}", id, name_str);
-            if let Some(app) = weak_clone.upgrade() {
-                let plans_model = load_plans(&db);
-                app.global::<ui::PlanPageAdapter>().set_plans(plans_model);
-            }
+            refresh_plans(&db, &plans_model_clone);
         }
     });
     

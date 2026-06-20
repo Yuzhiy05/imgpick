@@ -147,22 +147,18 @@ export component PlanPage inherits Rectangle {
                     height: 24px;
                 }
                 
-                Flickable {
-                    vertical-stretch: 1;
+                if PlanPageAdapter.plans.length > 0: GridLayout {
+                    spacing: 12px;
                     
-                    GridLayout {
-                        spacing: 12px;
-                        
-                        for plan[i] in PlanPageAdapter.plans: PlanItem {
-                            row: i / 4;
-                            col: mod(i, 4);
-                            plan-id: plan.id;
-                            plan-name: plan.name;
-                            is-selected: plan.id == root.plan-id;
-                            clicked => { PlanPageAdapter.select-plan(plan.id); }
-                            delete-clicked => { PlanPageAdapter.delete-plan(plan.id); }
-                            rename-clicked(name) => { PlanPageAdapter.rename-plan(plan.id, name); }
-                        }
+                    for plan[i] in PlanPageAdapter.plans: PlanItem {
+                        row: i / 4;
+                        col: mod(i, 4);
+                        plan-id: plan.id;
+                        plan-name: plan.name;
+                        is-selected: plan.id == root.plan-id;
+                        clicked => { PlanPageAdapter.select-plan(plan.id); }
+                        delete-clicked => { PlanPageAdapter.delete-plan(plan.id); }
+                        rename-clicked(name) => { PlanPageAdapter.rename-plan(plan.id, name); }
                     }
                 }
             }
@@ -558,6 +554,7 @@ export component App inherits Window {
             
             VerticalLayout {
                 padding: 16px;
+                alignment: stretch;
                 
                 if current-page == "plan": PlanPage {
                     plan-id <=> current-plan-id;
