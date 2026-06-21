@@ -138,6 +138,8 @@ export component PlanPage inherits Rectangle {
             vertical-stretch: 1;
             // 最小高度：4行计划卡片 (56px*4 + 间距12px*3) + 内边距12px*2 + 标题24px + 间距8px = 316px
             min-height: 316px;
+            // 宽度 = 4卡片(140*4) + 间距(12*3) + 左右padding(12*2) = 620px
+            width: 620px;
             background: #fafafa;
             border-radius: 8px;
             border-width: 1px;
@@ -338,9 +340,9 @@ export component ExcelPage inherits VerticalBox {
 export component App inherits Window {
     title: "图片标价工具";
     background: white;
-    // 设置最小尺寸，允许窗口变大
+    //preferred-width: 680px;
+    width: 772px;
     min-height: 600px;
-    min-width: 800px;
     
     // 当前选中的计划ID
     in-out property <int> current-plan-id: 0;
