@@ -197,6 +197,7 @@ slint = { version = "1.16.1", features = ["default"] }
 | 依赖配置 | 2 | dev-dependencies、edition |
 | 上游问题 | 1 | Slint/ICU4X已知bug |
 | Slint布局/模型 | 2 | Flickable宽度传播、GridLayout空模型崩溃 |
+| UI样式/主题 | 2 | native主题输入框显示问题、窗口宽度累加 |
 
 **关键经验**:
 1. Slint组件必须显式导出才能被引用
@@ -205,6 +206,8 @@ slint = { version = "1.16.1", features = ["default"] }
 4. ICU4X警告可忽略，等待Slint上游修复
 5. Flickable会让preferred width随内容变化，改用直接GridLayout + clip:true
 6. GridLayout + for循环在模型变空时会崩溃，用if条件守卫避免
+7. Slint的`preferred-width`和`max-width`可能不生效，必要时使用固定`width`
+8. 不同UI主题对控件样式影响大，fluent-light主题显示效果较好
 
 ---
 
@@ -263,5 +266,67 @@ app.global::<PlanPageAdapter>().set_plans(plans_model.clone().into());
 fn refresh_plans(db: &Database, model: &VecModel<PlanData>) {
     let plans = db.get_all_plans().unwrap_or_default();
     model.set_vec(plans);
+}
+```
+
+---
+
+## 13. 侧边栏展开折叠时窗口宽度不断变大
+
+**问题描述**: 在不同分辨率电脑上，反复折叠/展开侧边栏后，整个窗口宽度不断变大。
+
+**原因**: `on_sidebar_toggled` 回调中基于 `window.size()` 调整宽度，但 Slint 动画未完成时读取的尺寸是中间状态，导致累加。
+
+**解决方案**: 移除手动调整窗口大小的逻辑，让 Slint 布局系统自动处理。
+
+```rust
+// 侧边栏切换回调（布局自动处理宽度变化，无需手动调整窗口大小）
+app.on_sidebar_toggled(move |_expanded| {
+    // Slint布局系统会自动处理侧边栏宽度变化
+});
+```
+
+---
+
+## 14. 输入框初始状态不可见（fluent-light主题解决）
+
+**问题描述**: LineEdit 输入框白色背景与窗口背景融合，初始状态不可见。用 Rectangle 包裹会导致焦点时颜色异常。
+
+**原因**: Slint 默认 native 主题下，LineEdit 样式与背景色接近。
+
+**解决方案**: 在 `build.rs` 中切换 UI 主题为 `fluent-light`。
+
+```rust
+fn main() {
+    let config = slint_build::CompilerConfiguration::new()
+        .with_style("fluent-light".into());
+    slint_build::compile_with_config("src/ui/app.slint", config).unwrap();
+}
+```
+
+**经验**: Slint 的 `preferred-width` 和 `max-width` 可能不生效，必要时使用固定 `width`。
+
+---
+
+## 15. 计划列表组件宽度控制
+
+**问题描述**: 计划列表组件太宽，需要精确控制宽度使第一个卡片左侧和第四个卡片右侧到父容器距离一致。
+
+**解决方案**: 
+1. 计划列表 Rectangle 设置 `width: 620px`（4卡片596px + 左右padding各12px）
+2. Window 设置 `width: 700px`（侧边栏120px + 主内容padding + PlanPage宽度）
+
+```slint
+// 计划列表
+Rectangle {
+    width: 620px;  // 140*4 + 12*3 + 12*2
+    ...
+}
+
+// 窗口
+export component App inherits Window {
+    preferred-width: 700px;
+    min-width: 700px;
+    ...
 }
 ```
