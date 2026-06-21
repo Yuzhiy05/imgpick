@@ -196,9 +196,72 @@ slint = { version = "1.16.1", features = ["default"] }
 | 测试逻辑 | 1 | 状态管理理解错误 |
 | 依赖配置 | 2 | dev-dependencies、edition |
 | 上游问题 | 1 | Slint/ICU4X已知bug |
+| Slint布局/模型 | 2 | Flickable宽度传播、GridLayout空模型崩溃 |
 
 **关键经验**:
 1. Slint组件必须显式导出才能被引用
 2. 使用 `calamine` 库时注意 `Data` vs `DataType` 的版本差异
 3. 测试中涉及状态变更时，要使用变更后的对象ID
 4. ICU4X警告可忽略，等待Slint上游修复
+5. Flickable会让preferred width随内容变化，改用直接GridLayout + clip:true
+6. GridLayout + for循环在模型变空时会崩溃，用if条件守卫避免
+
+---
+
+## 11. PlanPage宽度随内容变化
+
+**问题描述**: PlanPage中的HorizontalLayout和Rectangle宽度会随计划卡片数量变化，删除计划后区域变小。
+
+**原因**: `Flickable` 内的 `GridLayout` 的 preferred width 会随内容变化（4列时=596px，0列时=0px），传播到父布局。
+
+**解决方案**: 
+1. 去掉 `Flickable`，直接使用 `GridLayout`，依赖外层 `clip: true` 裁剪溢出
+2. 在输入框后添加 528px 透明占位矩形固定输入框宽度
+
+```slint
+// 直接使用GridLayout，不用Flickable包裹
+GridLayout {
+    spacing: 12px;
+    for plan[i] in PlanPageAdapter.plans: PlanItem { ... }
+}
+
+// 输入框后添加占位矩形
+Rectangle {
+    width: 528px;  // 140*4 + 12*3 - 60 - 8
+    background: transparent;
+}
+```
+
+---
+
+## 12. 删除最后一个计划崩溃（index out of bounds）
+
+**问题描述**: 删除最后一个计划时程序崩溃，报错 `index out of bounds: the len is 0 but the index is 0`，错误位于 Slint 生成的 `app.rs` 的 layout cache 访问。
+
+**原因**: `GridLayout` + `for` 循环，当模型变空时 Slint 生成代码的 layout cache 为空但仍尝试访问 `cache[0]`。这是 Slint 的已知 bug。
+
+**相关Issue**: 
+- 可能与 [slint-ui/slint#11638](https://github.com/slint-ui/slint/issues/11638) 相关
+
+**解决方案**: 在 `GridLayout` 外加 `if` 条件守卫，模型为空时跳过渲染。
+
+```slint
+if PlanPageAdapter.plans.length > 0: GridLayout {
+    spacing: 12px;
+    for plan[i] in PlanPageAdapter.plans: PlanItem { ... }
+}
+```
+
+**Rust端**: 使用共享 `VecModel` + `set_vec()` 替代每次替换整个模型。
+
+```rust
+// 创建共享模型
+let plans_model = Rc::new(VecModel::from(plans));
+app.global::<PlanPageAdapter>().set_plans(plans_model.clone().into());
+
+// 刷新时使用set_vec原地更新
+fn refresh_plans(db: &Database, model: &VecModel<PlanData>) {
+    let plans = db.get_all_plans().unwrap_or_default();
+    model.set_vec(plans);
+}
+```
