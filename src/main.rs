@@ -131,25 +131,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
     
-    // 处理侧边栏切换 - 动态调整窗口大小
-    // 当侧边栏展开/收起时，窗口宽度需要相应调整以保持内容可见
-    let weak_clone = weak.clone();
-    app.on_sidebar_toggled(move |expanded| {
-        if let Some(app) = weak_clone.upgrade() {
-            let window = app.window();
-            let current_size = window.size();
-            let current_width = current_size.width as f32;
-            let current_height = current_size.height as f32;
-            
-            if expanded {
-                // 侧边栏展开：宽度增加72px（120px - 48px）
-                window.set_size(LogicalSize::new(current_width + 72.0, current_height));
-            } else {
-                // 侧边栏收起：宽度减少72px，但保持最小宽度800px
-                let new_width = (current_width - 72.0).max(800.0);
-                window.set_size(LogicalSize::new(new_width, current_height));
-            }
-        }
+    // 侧边栏切换回调（布局自动处理宽度变化，无需手动调整窗口大小）
+    app.on_sidebar_toggled(move |_expanded| {
+        // Slint布局系统会自动处理侧边栏宽度变化
     });
     
     app.run()?;
