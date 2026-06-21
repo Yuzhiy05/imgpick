@@ -1,3 +1,5 @@
 fn main() {
-    slint_build::compile("src/ui/app.slint").unwrap();
+    let config = slint_build::CompilerConfiguration::new()
+        .with_style("fluent-light".into());
+    slint_build::compile_with_config("src/ui/app.slint", config).unwrap();
 }
