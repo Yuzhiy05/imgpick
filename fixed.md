@@ -330,3 +330,48 @@ export component App inherits Window {
     ...
 }
 ```
+
+---
+
+## 16. PricingPage布局问题
+
+**问题描述**: PricingPage继承VerticalBox时出现蓝色竖线，且无法填满父容器。
+
+**原因**: 
+1. VerticalBox有默认样式导致蓝色竖线
+2. 主内容区域Rectangle未设置width: 100%
+3. PricingPage内部padding导致留白
+
+**解决方案**: 
+1. 主内容区域Rectangle设置`width: 100%`
+2. PricingPage内部VerticalLayout设置`padding: 0`
+3. 图片显示区域和文件夹列表使用比例布局（7:3）
+
+```slint
+// 主内容区域
+Rectangle {
+    horizontal-stretch: 1;
+    width: 100%;
+    ...
+    VerticalLayout {
+        padding: 0;
+        alignment: stretch;
+        ...
+    }
+}
+
+// PricingPage内部
+VerticalLayout {
+    padding: 0;
+    spacing: 8px;
+    ...
+    // 图片显示区域 + 文件夹列表
+    Rectangle {
+        HorizontalLayout {
+            spacing: 20px;
+            Rectangle { horizontal-stretch: 7; ... }  // 图片显示区域70%
+            Rectangle { horizontal-stretch: 3; ... }  // 文件夹列表30%
+        }
+    }
+}
+```
