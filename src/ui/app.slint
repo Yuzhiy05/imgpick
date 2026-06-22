@@ -264,63 +264,28 @@ export component PricingPage inherits Rectangle {
         current-slot = index;
     }
     
-    // 删除指定槽位内容（如果有聚焦槽位则从聚焦位置删除，否则从右向左）
+    // 删除槽位内容
     delete-slot(index) => {
-        // 如果当前槽位有内容，删除它
-        if index == 0 && slot1 != "" {
-            slot1 = "";
-        } else if index == 1 && slot2 != "" {
-            slot2 = "";
-        } else if index == 2 && slot3 != "" {
-            slot3 = "";
-        } else if index == 3 && slot4 != "" {
-            slot4 = "";
-        } else if index == 4 && slot5 != "" {
-            slot5 = "";
-        } else if index == 5 && slot6 != "" {
-            slot6 = "";
-        } else if index == 6 && slot7 != "" {
-            slot7 = "";
-        } else if index == 7 && slot8 != "" {
-            slot8 = "";
-        }
-        // 如果聚焦槽位为空，从右向左找第一个非空槽位删除
-        else if slot8 != "" {
-            slot8 = "";
-        } else if slot7 != "" {
-            slot7 = "";
-        } else if slot6 != "" {
-            slot6 = "";
-        } else if slot5 != "" {
-            slot5 = "";
-        } else if slot4 != "" {
-            slot4 = "";
-        } else if slot3 != "" {
-            slot3 = "";
-        } else if slot2 != "" {
-            slot2 = "";
-        } else if slot1 != "" {
-            slot1 = "";
-        }
-        // 删除后重新计算current-slot（从后往前找第一个非空槽位）
-        if slot8 != "" {
-            current-slot = 8;
-        } else if slot7 != "" {
-            current-slot = 7;
-        } else if slot6 != "" {
-            current-slot = 6;
-        } else if slot5 != "" {
-            current-slot = 5;
-        } else if slot4 != "" {
-            current-slot = 4;
-        } else if slot3 != "" {
-            current-slot = 3;
-        } else if slot2 != "" {
-            current-slot = 2;
-        } else if slot1 != "" {
-            current-slot = 1;
+        if current-slot == 8 {
+            // 无聚焦状态：从右向左删除最后一个非空槽位
+            if slot8 != "" { slot8 = ""; current-slot = 7; }
+            else if slot7 != "" { slot7 = ""; current-slot = 6; }
+            else if slot6 != "" { slot6 = ""; current-slot = 5; }
+            else if slot5 != "" { slot5 = ""; current-slot = 4; }
+            else if slot4 != "" { slot4 = ""; current-slot = 3; }
+            else if slot3 != "" { slot3 = ""; current-slot = 2; }
+            else if slot2 != "" { slot2 = ""; current-slot = 1; }
+            else if slot1 != "" { slot1 = ""; current-slot = 0; }
         } else {
-            current-slot = 0;
+            // 有聚焦状态：删除聚焦位置的值，聚焦向左移动
+            if current-slot == 7 { slot8 = ""; current-slot = 6; }
+            else if current-slot == 6 { slot7 = ""; current-slot = 5; }
+            else if current-slot == 5 { slot6 = ""; current-slot = 4; }
+            else if current-slot == 4 { slot5 = ""; current-slot = 3; }
+            else if current-slot == 3 { slot4 = ""; current-slot = 2; }
+            else if current-slot == 2 { slot3 = ""; current-slot = 1; }
+            else if current-slot == 1 { slot2 = ""; current-slot = 0; }
+            else if current-slot == 0 { slot1 = ""; }
         }
     }
 
