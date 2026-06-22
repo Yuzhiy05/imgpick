@@ -158,9 +158,81 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 选择文件夹列表项回调
     let weak_clone = weak.clone();
     app.global::<ui::PricingPageAdapter>().on_select_folder_item(move |index| {
-        if let Some(_app) = weak_clone.upgrade() {
+        if let Some(app) = weak_clone.upgrade() {
             println!("Selected folder index: {}", index);
-            // TODO: 加载该文件夹下的图片并显示
+            app.global::<ui::PricingPageAdapter>().set_selected_folder(index);
+            
+            // 获取文件夹路径
+            let folders = app.global::<ui::PricingPageAdapter>().get_folders();
+            if let Some(folder_path) = folders.iter().nth(index as usize) {
+                let path = std::path::PathBuf::from(folder_path.to_string());
+                let image_files = image_manager::ImageManager::get_image_files_from_folder(&path);
+                
+                println!("Found {} images in folder", image_files.len());
+                let images: Vec<slint::SharedString> = image_files.into_iter().map(|s| s.into()).collect();
+                app.global::<ui::PricingPageAdapter>().set_images(images.as_slice().into());
+                
+                // 默认显示第一张图片
+                if !images.is_empty() {
+                    app.global::<ui::PricingPageAdapter>().set_current_image_index(0);
+                    app.global::<ui::PricingPageAdapter>().set_current_image_path(images[0].clone());
+                    
+                    // 加载图片
+                    let path_str = images[0].to_string();
+                    let image_path = std::path::Path::new(path_str.as_str());
+                    if let Ok(image) = slint::Image::load_from_path(image_path) {
+                        app.global::<ui::PricingPageAdapter>().set_current_image(image);
+                    }
+                }
+            }
+        }
+    });
+    
+    // 下一张图片回调
+    let weak_clone = weak.clone();
+    app.global::<ui::PricingPageAdapter>().on_next_image(move || {
+        if let Some(app) = weak_clone.upgrade() {
+            let images = app.global::<ui::PricingPageAdapter>().get_images();
+            let current_index = app.global::<ui::PricingPageAdapter>().get_current_image_index();
+            let next_index = current_index + 1;
+            
+            if next_index < images.iter().count() as i32 {
+                app.global::<ui::PricingPageAdapter>().set_current_image_index(next_index);
+                if let Some(path) = images.iter().nth(next_index as usize) {
+                    app.global::<ui::PricingPageAdapter>().set_current_image_path(path.clone());
+                    
+                    // 加载图片
+                    let path_str = path.to_string();
+                    let image_path = std::path::Path::new(path_str.as_str());
+                    if let Ok(image) = slint::Image::load_from_path(image_path) {
+                        app.global::<ui::PricingPageAdapter>().set_current_image(image);
+                    }
+                }
+            }
+        }
+    });
+    
+    // 上一张图片回调
+    let weak_clone = weak.clone();
+    app.global::<ui::PricingPageAdapter>().on_prev_image(move || {
+        if let Some(app) = weak_clone.upgrade() {
+            let current_index = app.global::<ui::PricingPageAdapter>().get_current_image_index();
+            let prev_index = current_index - 1;
+            
+            if prev_index >= 0 {
+                app.global::<ui::PricingPageAdapter>().set_current_image_index(prev_index);
+                let images = app.global::<ui::PricingPageAdapter>().get_images();
+                if let Some(path) = images.iter().nth(prev_index as usize) {
+                    app.global::<ui::PricingPageAdapter>().set_current_image_path(path.clone());
+                    
+                    // 加载图片
+                    let path_str = path.to_string();
+                    let image_path = std::path::Path::new(path_str.as_str());
+                    if let Ok(image) = slint::Image::load_from_path(image_path) {
+                        app.global::<ui::PricingPageAdapter>().set_current_image(image);
+                    }
+                }
+            }
         }
     });
     

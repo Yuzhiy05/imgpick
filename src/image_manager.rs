@@ -225,6 +225,25 @@ impl ImageManager {
         Ok(groups)
     }
 
+    pub fn get_image_files_from_folder(folder_path: &Path) -> Vec<String> {
+        let mut images = Vec::new();
+        
+        if let Ok(entries) = std::fs::read_dir(folder_path) {
+            for entry in entries.flatten() {
+                let file_path = entry.path();
+                if let Some(ext) = file_path.extension() {
+                    let ext_str = ext.to_string_lossy().to_lowercase();
+                    if ["jpg", "jpeg", "png", "gif", "bmp", "webp"].contains(&ext_str.as_str()) {
+                        images.push(file_path.display().to_string());
+                    }
+                }
+            }
+        }
+        
+        images.sort();
+        images
+    }
+
     pub fn rename_image(&self, image_id: i64, new_name: &str) -> Result<(), String> {
         if new_name.trim().is_empty() {
             return Err("文件名不能为空".to_string());

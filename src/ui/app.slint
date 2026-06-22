@@ -204,8 +204,15 @@ export component PlanPage inherits Rectangle {
 export global PricingPageAdapter {
     in-out property <[string]> folders: [];
     in-out property <int> selected-folder: -1;
+    in-out property <[string]> images: [];  // 当前文件夹的图片路径列表
+    in-out property <int> current-image-index: -1;  // 当前显示的图片索引
+    in-out property <string> current-image-path: "";  // 当前显示的图片路径
+    in-out property <image> current-image;  // 当前显示的图片
 
     callback select-folder-item(int);
+    callback load-images(int);  // 加载指定文件夹的图片
+    callback next-image();
+    callback prev-image();
 }
 
 // 图片标价页面
@@ -315,11 +322,13 @@ export component PricingPage inherits Rectangle {
             Button {
                 text: "上一张";
                 width: 70px;
+                clicked => { PricingPageAdapter.prev-image(); }
             }
 
             Button {
                 text: "下一张";
                 width: 70px;
+                clicked => { PricingPageAdapter.next-image(); }
             }
         }
 
@@ -333,22 +342,29 @@ export component PricingPage inherits Rectangle {
             HorizontalLayout {
                 spacing: 20px;
 
-                // 图片显示区域 (70%)
+                // 图片显示区域 (80%)
                 Rectangle {
-                    horizontal-stretch: 7;
+                    horizontal-stretch: 8;
                     background: transparent;
 
-                    if current-image == "": Text {
+                    if PricingPageAdapter.current-image-path == "": Text {
                         text: "图片显示区域";
                         horizontal-alignment: center;
                         vertical-alignment: center;
                         color: #999;
                     }
+                    
+                    if PricingPageAdapter.current-image-path != "": Image {
+                        source: PricingPageAdapter.current-image;
+                        image-fit: contain;
+                        width: 100%;
+                        height: 100%;
+                    }
                 }
 
-                // 文件夹列表面板 (30%)
+                // 文件夹列表面板 (20%)
                 Rectangle {
-                    horizontal-stretch: 3;
+                    horizontal-stretch: 2;
                     background: #fafafa;
                     border-width: 1px;
                     border-color: #e0e0e0;
