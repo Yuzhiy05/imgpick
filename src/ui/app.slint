@@ -208,16 +208,7 @@ export global PricingPageAdapter {
     in-out property <int> current-image-index: -1;  // 当前显示的图片索引
     in-out property <string> current-image-path: "";  // 当前显示的图片路径
     in-out property <image> current-image;  // 当前显示的图片
-
-    callback select-folder-item(int);
-    callback load-images(int);  // 加载指定文件夹的图片
-    callback next-image();
-    callback prev-image();
-}
-
-// 图片标价页面
-export component PricingPage inherits Rectangle {
-    in-out property <int> plan-id: 0;
+    
     // 8个价位输入槽位
     in-out property <string> slot1: "";
     in-out property <string> slot2: "";
@@ -229,14 +220,17 @@ export component PricingPage inherits Rectangle {
     in-out property <string> slot8: "";
     // 当前输入位置 (0-7)
     in-out property <int> current-slot: 0;
-    // 当前显示的图片路径
-    in-out property <string> current-image: "";
 
-    callback select-folder();
-    callback input-code(string);
-    callback focus-slot(int);
-    callback delete-slot(int);
-
+    callback select-folder-item(int);
+    callback load-images(int);  // 加载指定文件夹的图片
+    callback next-image();
+    callback prev-image();
+    callback confirm-pricing(string, string, string);  // 确认标价：图片名、图片路径、标价
+    callback clear-slots();  // 清空所有槽位
+    callback input-code(string);  // 输入价位
+    callback focus-slot(int);  // 聚焦槽位
+    callback delete-slot(int);  // 删除槽位
+    
     // 输入价位函数
     input-code(code) => {
         if current-slot == 0 {
@@ -295,9 +289,29 @@ export component PricingPage inherits Rectangle {
             else if current-slot == 0 { slot1 = ""; }
         }
     }
+    
+    // 清空所有槽位
+    clear-slots() => {
+        slot1 = "";
+        slot2 = "";
+        slot3 = "";
+        slot4 = "";
+        slot5 = "";
+        slot6 = "";
+        slot7 = "";
+        slot8 = "";
+        current-slot = 0;
+    }
+}
+
+// 图片标价页面
+export component PricingPage inherits Rectangle {
+    in-out property <int> plan-id: 0;
+
+    callback select-folder();
 
     VerticalLayout {
-        padding: 8px;
+        padding: 0;
         spacing: 8px;
 
         Text {
@@ -389,9 +403,7 @@ export component PricingPage inherits Rectangle {
                             border-radius: 4px;
 
                             touch := TouchArea {
-                                clicked => {
-                                    PricingPageAdapter.select-folder-item(i);
-                                }
+                                clicked => { PricingPageAdapter.select-folder-item(i); }
                             }
 
                             Text {
@@ -415,184 +427,59 @@ export component PricingPage inherits Rectangle {
             height: 30px;
 
             // 槽位1
-            Rectangle {
-                border-width: 1px;
-                border-color: current-slot == 0 ? #1976D2 : #bdbdbd;
-                border-radius: 4px;
-                background: current-slot == 0 ? #e3f2fd : white;
-                width: 50px;
-                height: 30px;
-                TouchArea {
-                    clicked => {
-                        root.focus-slot(0);
-                    }
-                }
-
-                Text {
-                    text: slot1;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
+            Rectangle { border-width: 1px; border-color: PricingPageAdapter.current-slot == 0 ? #1976D2 : #bdbdbd; border-radius: 4px; background: PricingPageAdapter.current-slot == 0 ? #e3f2fd : white; width: 50px; height: 30px;
+                TouchArea { clicked => { PricingPageAdapter.focus-slot(0); } }
+                Text { text: PricingPageAdapter.slot1; horizontal-alignment: center; vertical-alignment: center; }
             }
             // 槽位2
-            Rectangle {
-                border-width: 1px;
-                border-color: current-slot == 1 ? #1976D2 : #bdbdbd;
-                border-radius: 4px;
-                background: current-slot == 1 ? #e3f2fd : white;
-                width: 50px;
-                height: 30px;
-                TouchArea {
-                    clicked => {
-                        root.focus-slot(1);
-                    }
-                }
-
-                Text {
-                    text: slot2;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
+            Rectangle { border-width: 1px; border-color: PricingPageAdapter.current-slot == 1 ? #1976D2 : #bdbdbd; border-radius: 4px; background: PricingPageAdapter.current-slot == 1 ? #e3f2fd : white; width: 50px; height: 30px;
+                TouchArea { clicked => { PricingPageAdapter.focus-slot(1); } }
+                Text { text: PricingPageAdapter.slot2; horizontal-alignment: center; vertical-alignment: center; }
             }
             // 槽位3
-            Rectangle {
-                border-width: 1px;
-                border-color: current-slot == 2 ? #1976D2 : #bdbdbd;
-                border-radius: 4px;
-                background: current-slot == 2 ? #e3f2fd : white;
-                width: 50px;
-                height: 30px;
-                TouchArea {
-                    clicked => {
-                        root.focus-slot(2);
-                    }
-                }
-
-                Text {
-                    text: slot3;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
+            Rectangle { border-width: 1px; border-color: PricingPageAdapter.current-slot == 2 ? #1976D2 : #bdbdbd; border-radius: 4px; background: PricingPageAdapter.current-slot == 2 ? #e3f2fd : white; width: 50px; height: 30px;
+                TouchArea { clicked => { PricingPageAdapter.focus-slot(2); } }
+                Text { text: PricingPageAdapter.slot3; horizontal-alignment: center; vertical-alignment: center; }
             }
             // 槽位4
-            Rectangle {
-                border-width: 1px;
-                border-color: current-slot == 3 ? #1976D2 : #bdbdbd;
-                border-radius: 4px;
-                background: current-slot == 3 ? #e3f2fd : white;
-                width: 50px;
-                height: 30px;
-                TouchArea {
-                    clicked => {
-                        root.focus-slot(3);
-                    }
-                }
-
-                Text {
-                    text: slot4;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
+            Rectangle { border-width: 1px; border-color: PricingPageAdapter.current-slot == 3 ? #1976D2 : #bdbdbd; border-radius: 4px; background: PricingPageAdapter.current-slot == 3 ? #e3f2fd : white; width: 50px; height: 30px;
+                TouchArea { clicked => { PricingPageAdapter.focus-slot(3); } }
+                Text { text: PricingPageAdapter.slot4; horizontal-alignment: center; vertical-alignment: center; }
             }
             // 槽位5
-            Rectangle {
-                border-width: 1px;
-                border-color: current-slot == 4 ? #1976D2 : #bdbdbd;
-                border-radius: 4px;
-                background: current-slot == 4 ? #e3f2fd : white;
-                width: 50px;
-                height: 30px;
-                TouchArea {
-                    clicked => {
-                        root.focus-slot(4);
-                    }
-                }
-
-                Text {
-                    text: slot5;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
+            Rectangle { border-width: 1px; border-color: PricingPageAdapter.current-slot == 4 ? #1976D2 : #bdbdbd; border-radius: 4px; background: PricingPageAdapter.current-slot == 4 ? #e3f2fd : white; width: 50px; height: 30px;
+                TouchArea { clicked => { PricingPageAdapter.focus-slot(4); } }
+                Text { text: PricingPageAdapter.slot5; horizontal-alignment: center; vertical-alignment: center; }
             }
             // 槽位6
-            Rectangle {
-                border-width: 1px;
-                border-color: current-slot == 5 ? #1976D2 : #bdbdbd;
-                border-radius: 4px;
-                background: current-slot == 5 ? #e3f2fd : white;
-                width: 50px;
-                height: 30px;
-                TouchArea {
-                    clicked => {
-                        root.focus-slot(5);
-                    }
-                }
-
-                Text {
-                    text: slot6;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
+            Rectangle { border-width: 1px; border-color: PricingPageAdapter.current-slot == 5 ? #1976D2 : #bdbdbd; border-radius: 4px; background: PricingPageAdapter.current-slot == 5 ? #e3f2fd : white; width: 50px; height: 30px;
+                TouchArea { clicked => { PricingPageAdapter.focus-slot(5); } }
+                Text { text: PricingPageAdapter.slot6; horizontal-alignment: center; vertical-alignment: center; }
             }
             // 槽位7
-            Rectangle {
-                border-width: 1px;
-                border-color: current-slot == 6 ? #1976D2 : #bdbdbd;
-                border-radius: 4px;
-                background: current-slot == 6 ? #e3f2fd : white;
-                width: 50px;
-                height: 30px;
-                TouchArea {
-                    clicked => {
-                        root.focus-slot(6);
-                    }
-                }
-
-                Text {
-                    text: slot7;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
+            Rectangle { border-width: 1px; border-color: PricingPageAdapter.current-slot == 6 ? #1976D2 : #bdbdbd; border-radius: 4px; background: PricingPageAdapter.current-slot == 6 ? #e3f2fd : white; width: 50px; height: 30px;
+                TouchArea { clicked => { PricingPageAdapter.focus-slot(6); } }
+                Text { text: PricingPageAdapter.slot7; horizontal-alignment: center; vertical-alignment: center; }
             }
             // 槽位8
-            Rectangle {
-                border-width: 1px;
-                border-color: current-slot == 7 ? #1976D2 : #bdbdbd;
-                border-radius: 4px;
-                background: current-slot == 7 ? #e3f2fd : white;
-                width: 50px;
-                height: 30px;
-                TouchArea {
-                    clicked => {
-                        root.focus-slot(7);
-                    }
-                }
-
-                Text {
-                    text: slot8;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
+            Rectangle { border-width: 1px; border-color: PricingPageAdapter.current-slot == 7 ? #1976D2 : #bdbdbd; border-radius: 4px; background: PricingPageAdapter.current-slot == 7 ? #e3f2fd : white; width: 50px; height: 30px;
+                TouchArea { clicked => { PricingPageAdapter.focus-slot(7); } }
+                Text { text: PricingPageAdapter.slot8; horizontal-alignment: center; vertical-alignment: center; }
             }
-
-            Rectangle {
-                width: 8px;
-                background: transparent;
-            }
-
+            
+            Rectangle { width: 8px; background: transparent; }
+            
             // 删除按钮
             Rectangle {
                 width: 50px;
                 height: 30px;
                 background: del-touch.has-hover ? #ffcdd2 : #ef5350;
                 border-radius: 4px;
-
+                
                 del-touch := TouchArea {
-                    clicked => {
-                        root.delete-slot(current-slot);
-                    }
+                    clicked => { PricingPageAdapter.delete-slot(PricingPageAdapter.current-slot); }
                 }
-
+                
                 Text {
                     text: "←";
                     color: white;
@@ -602,69 +489,21 @@ export component PricingPage inherits Rectangle {
                 }
             }
         }
-
+        
         // 价位按钮
         HorizontalLayout {
             spacing: 4px;
             height: 30px;
-
-            Button {
-                text: "4+";
-                width: 50px;
-                clicked => {
-                    root.input-code("4+");
-                }
-            }
-
-            Button {
-                text: "3+";
-                width: 50px;
-                clicked => {
-                    root.input-code("3+");
-                }
-            }
-
-            Button {
-                text: "2+";
-                width: 50px;
-                clicked => {
-                    root.input-code("2+");
-                }
-            }
-
-            Button {
-                text: "1+/+";
-                width: 50px;
-                clicked => {
-                    root.input-code("1+/+");
-                }
-            }
-
-            Button {
-                text: "-";
-                width: 50px;
-                clicked => {
-                    root.input-code("-");
-                }
-            }
-
-            Button {
-                text: "?";
-                width: 50px;
-                clicked => {
-                    root.input-code("?");
-                }
-            }
-
-            Button {
-                text: "M";
-                width: 50px;
-                clicked => {
-                    root.input-code("M");
-                }
-            }
+            
+            Button { text: "4+"; width: 50px; clicked => { PricingPageAdapter.input-code("4+"); } }
+            Button { text: "3+"; width: 50px; clicked => { PricingPageAdapter.input-code("3+"); } }
+            Button { text: "2+"; width: 50px; clicked => { PricingPageAdapter.input-code("2+"); } }
+            Button { text: "1+/+"; width: 50px; clicked => { PricingPageAdapter.input-code("1+/+"); } }
+            Button { text: "-"; width: 50px; clicked => { PricingPageAdapter.input-code("-"); } }
+            Button { text: "?"; width: 50px; clicked => { PricingPageAdapter.input-code("?"); } }
+            Button { text: "M"; width: 50px; clicked => { PricingPageAdapter.input-code("M"); } }
         }
-
+        
         HorizontalLayout {
             spacing: 8px;
             height: 30px;
@@ -672,6 +511,14 @@ export component PricingPage inherits Rectangle {
             Button {
                 text: "确认标价";
                 width: 80px;
+                clicked => {
+                    // 获取标价
+                    let price = PricingPageAdapter.slot1 + PricingPageAdapter.slot2 + PricingPageAdapter.slot3 + PricingPageAdapter.slot4 + PricingPageAdapter.slot5 + PricingPageAdapter.slot6 + PricingPageAdapter.slot7 + PricingPageAdapter.slot8;
+                    if price != "" && PricingPageAdapter.current-image-path != "" {
+                        // 直接使用路径作为文件名（后续在Rust端处理）
+                        PricingPageAdapter.confirm-pricing(PricingPageAdapter.current-image-path, PricingPageAdapter.current-image-path, price);
+                    }
+                }
             }
 
             Button {
@@ -1030,3 +877,4 @@ export component App inherits Window {
         }
     }
 }
+

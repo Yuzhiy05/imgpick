@@ -244,6 +244,19 @@ impl ImageManager {
         images
     }
 
+    pub fn save_pricing(&self, file_path: &str, _image_path: &str, price: &str) -> Result<(), String> {
+        // 从路径提取文件名
+        let path = Path::new(file_path);
+        let file_name = path.file_name()
+            .ok_or_else(|| "无法获取文件名".to_string())?
+            .to_string_lossy()
+            .to_string();
+        
+        println!("Saving pricing: {} - {}", file_name, price);
+        // TODO: 保存到数据库
+        Ok(())
+    }
+
     pub fn rename_image(&self, image_id: i64, new_name: &str) -> Result<(), String> {
         if new_name.trim().is_empty() {
             return Err("文件名不能为空".to_string());

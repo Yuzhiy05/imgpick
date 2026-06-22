@@ -208,6 +208,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         app.global::<ui::PricingPageAdapter>().set_current_image(image);
                     }
                 }
+                // 清空槽位
+                app.global::<ui::PricingPageAdapter>().invoke_clear_slots();
             }
         }
     });
@@ -232,6 +234,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         app.global::<ui::PricingPageAdapter>().set_current_image(image);
                     }
                 }
+                // 清空槽位
+                app.global::<ui::PricingPageAdapter>().invoke_clear_slots();
+            }
+        }
+    });
+    
+    // 确认标价回调
+    let weak_clone = weak.clone();
+    let db_clone = db.clone();
+    app.global::<ui::PricingPageAdapter>().on_confirm_pricing(move |filename, path, price| {
+        if let Some(_app) = weak_clone.upgrade() {
+            println!("Confirm pricing: {} - {} - {}", filename, path, price);
+            
+            // 保存到数据库
+            let image_manager = image_manager::ImageManager::new(db_clone.clone(), std::path::PathBuf::from("."));
+            match image_manager.save_pricing(&filename.to_string(), &path.to_string(), &price.to_string()) {
+                Ok(_) => println!("Pricing saved successfully"),
+                Err(e) => eprintln!("Failed to save pricing: {}", e),
             }
         }
     });
