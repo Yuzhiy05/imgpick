@@ -18,7 +18,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::rc::Rc;
 use slint::ComponentHandle;
-use slint::{VecModel, LogicalSize};
+use slint::{VecModel, LogicalSize, Model};
 
 fn create_plans_model(db: &Database) -> Rc<VecModel<ui::PlanData>> {
     let plans = match db.get_all_plans() {
@@ -134,6 +134,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 侧边栏切换回调（布局自动处理宽度变化，无需手动调整窗口大小）
     app.on_sidebar_toggled(move |_expanded| {
         // Slint布局系统会自动处理侧边栏宽度变化
+    });
+    
+    // 选择文件夹回调
+    let weak_clone = weak.clone();
+    app.on_select_folder(move || {
+        if let Some(app) = weak_clone.upgrade() {
+            let folder = rfd::FileDialog::new()
+                .set_title("选择图片文件夹")
+                .pick_folder();
+            
+            if let Some(path) = folder {
+                let path_str = path.display().to_string();
+                println!("Selected folder: {}", path_str);
+                let folders = app.global::<ui::PricingPageAdapter>().get_folders();
+                let mut new_folders: Vec<slint::SharedString> = folders.iter().collect();
+                new_folders.push(path_str.into());
+                app.global::<ui::PricingPageAdapter>().set_folders(new_folders.as_slice().into());
+            }
+        }
+    });
+    
+    // 选择文件夹列表项回调
+    let weak_clone = weak.clone();
+    app.global::<ui::PricingPageAdapter>().on_select_folder_item(move |index| {
+        if let Some(_app) = weak_clone.upgrade() {
+            println!("Selected folder index: {}", index);
+            // TODO: 加载该文件夹下的图片并显示
+        }
     });
     
     app.run()?;

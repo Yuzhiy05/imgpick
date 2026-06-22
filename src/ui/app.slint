@@ -1,4 +1,14 @@
-import { Button, VerticalBox, HorizontalBox, ListView, TextEdit, LineEdit, ComboBox, ScrollView, CheckBox } from "std-widgets.slint";
+import {
+    Button,
+    VerticalBox,
+    HorizontalBox,
+    ListView,
+    TextEdit,
+    LineEdit,
+    ComboBox,
+    ScrollView,
+    CheckBox,
+} from "std-widgets.slint";
 
 // 计划项组件 - 卡片样式（横向布局：名称在左，删除在右）
 export component PlanItem inherits Rectangle {
@@ -6,11 +16,11 @@ export component PlanItem inherits Rectangle {
     in-out property <string> plan-name: "";
     in-out property <bool> is-selected: false;
     in-out property <bool> is-editing: false;
-    
+
     callback clicked();
     callback delete-clicked();
     callback rename-clicked(string);
-    
+
     width: 140px;
     height: 56px;
     border-radius: 8px;
@@ -18,24 +28,28 @@ export component PlanItem inherits Rectangle {
     border-width: 2px;
     border-color: is-selected ? #1976D2 : #e0e0e0;
     clip: true;
-    
+
     touch := TouchArea {
-        clicked => { root.clicked(); }
+        clicked => {
+            root.clicked();
+        }
     }
-    
+
     HorizontalLayout {
         padding: 0;
         spacing: 0;
-        
+
         // 计划名称区域
         Rectangle {
             horizontal-stretch: 1;
             background: transparent;
-            
+
             if is-editing: LineEdit {
                 text: plan-name;
                 horizontal-stretch: 1;
-                accepted(text) => { root.rename-clicked(text); }
+                accepted(text) => {
+                    root.rename-clicked(text);
+                }
             }
             if !is-editing: Text {
                 text: plan-name;
@@ -46,16 +60,18 @@ export component PlanItem inherits Rectangle {
                 overflow: elide;
             }
         }
-        
+
         // 删除按钮区域（右侧）
         Rectangle {
             width: 32px;
             background: touch-del.has-hover ? #ffebee : transparent;
-            
+
             touch-del := TouchArea {
-                clicked => { root.delete-clicked(); }
+                clicked => {
+                    root.delete-clicked();
+                }
             }
-            
+
             Text {
                 text: "🗑️";
                 font-size: 14px;
@@ -75,7 +91,7 @@ export struct PlanData {
 // 计划页面适配器（全局单例）
 export global PlanPageAdapter {
     in-out property <[PlanData]> plans: [];
-    
+
     callback create-plan(string);
     callback delete-plan(int);
     callback rename-plan(int, string);
@@ -86,12 +102,12 @@ export global PlanPageAdapter {
 export component PlanPage inherits Rectangle {
     in-out property <int> plan-id: 0;
     in-out property <string> plan-name: "";
-    
+
     VerticalLayout {
         alignment: start;
         padding: 0;
         spacing: 12px;
-        
+
         Text {
             text: "添加计划";
             font-size: 18px;
@@ -99,11 +115,11 @@ export component PlanPage inherits Rectangle {
             color: #1976D2;
             height: 28px;
         }
-        
+
         HorizontalLayout {
             height: 40px;
             spacing: 8px;
-            
+
             new-plan-input := LineEdit {
                 placeholder-text: "输入新计划名称...";
                 horizontal-stretch: 1;
@@ -114,7 +130,7 @@ export component PlanPage inherits Rectangle {
                     }
                 }
             }
-            
+
             Button {
                 text: "添加";
                 width: 60px;
@@ -125,15 +141,15 @@ export component PlanPage inherits Rectangle {
                     }
                 }
             }
-            
+
             // 占位矩形：确保输入框宽度不随计划卡片数量变化
             // 宽度 = 4卡片宽度(140*4) + 间距(12*3) - 按钮(60) - 间距(8) = 528px
             Rectangle {
-                width: 528px;
+                width: 520px;
                 background: transparent;
             }
         }
-        
+
         Rectangle {
             vertical-stretch: 1;
             // 最小高度：4行计划卡片 (56px*4 + 间距12px*3) + 内边距12px*2 + 标题24px + 间距8px = 316px
@@ -145,12 +161,12 @@ export component PlanPage inherits Rectangle {
             border-width: 1px;
             border-color: #e0e0e0;
             clip: true;
-            
+
             VerticalLayout {
                 padding: 12px;
                 spacing: 8px;
                 alignment: start;
-                
+
                 Text {
                     text: "计划列表";
                     font-size: 14px;
@@ -158,19 +174,25 @@ export component PlanPage inherits Rectangle {
                     color: #666;
                     height: 24px;
                 }
-                
+
                 if PlanPageAdapter.plans.length > 0: GridLayout {
                     spacing: 12px;
-                    
+
                     for plan[i] in PlanPageAdapter.plans: PlanItem {
                         row: i / 4;
                         col: mod(i, 4);
                         plan-id: plan.id;
                         plan-name: plan.name;
                         is-selected: plan.id == root.plan-id;
-                        clicked => { PlanPageAdapter.select-plan(plan.id); }
-                        delete-clicked => { PlanPageAdapter.delete-plan(plan.id); }
-                        rename-clicked(name) => { PlanPageAdapter.rename-plan(plan.id, name); }
+                        clicked => {
+                            PlanPageAdapter.select-plan(plan.id);
+                        }
+                        delete-clicked => {
+                            PlanPageAdapter.delete-plan(plan.id);
+                        }
+                        rename-clicked(name) => {
+                            PlanPageAdapter.rename-plan(plan.id, name);
+                        }
                     }
                 }
             }
@@ -178,72 +200,503 @@ export component PlanPage inherits Rectangle {
     }
 }
 
+// 图片标价页面适配器（全局单例）
+export global PricingPageAdapter {
+    in-out property <[string]> folders: [];
+    in-out property <int> selected-folder: -1;
+
+    callback select-folder-item(int);
+}
+
 // 图片标价页面
-export component PricingPage inherits VerticalBox {
+export component PricingPage inherits Rectangle {
     in-out property <int> plan-id: 0;
-    
-    Text {
-        text: "图片标价";
-        font-size: 18px;
-        font-weight: 700;
-        color: #1976D2;
+    // 8个价位输入槽位
+    in-out property <string> slot1: "";
+    in-out property <string> slot2: "";
+    in-out property <string> slot3: "";
+    in-out property <string> slot4: "";
+    in-out property <string> slot5: "";
+    in-out property <string> slot6: "";
+    in-out property <string> slot7: "";
+    in-out property <string> slot8: "";
+    // 当前输入位置 (0-7)
+    in-out property <int> current-slot: 0;
+    // 当前显示的图片路径
+    in-out property <string> current-image: "";
+
+    callback select-folder();
+    callback input-code(string);
+    callback focus-slot(int);
+    callback delete-slot(int);
+
+    // 输入价位函数
+    input-code(code) => {
+        if current-slot == 0 {
+            slot1 = code;
+            current-slot = 1;
+        } else if current-slot == 1 {
+            slot2 = code;
+            current-slot = 2;
+        } else if current-slot == 2 {
+            slot3 = code;
+            current-slot = 3;
+        } else if current-slot == 3 {
+            slot4 = code;
+            current-slot = 4;
+        } else if current-slot == 4 {
+            slot5 = code;
+            current-slot = 5;
+        } else if current-slot == 5 {
+            slot6 = code;
+            current-slot = 6;
+        } else if current-slot == 6 {
+            slot7 = code;
+            current-slot = 7;
+        } else if current-slot == 7 {
+            slot8 = code;
+            current-slot = 8;
+        }
     }
     
-    HorizontalLayout {
+    // 聚焦到指定槽位
+    focus-slot(index) => {
+        current-slot = index;
+    }
+    
+    // 删除指定槽位内容（如果有聚焦槽位则从聚焦位置删除，否则从右向左）
+    delete-slot(index) => {
+        // 如果当前槽位有内容，删除它
+        if index == 0 && slot1 != "" {
+            slot1 = "";
+        } else if index == 1 && slot2 != "" {
+            slot2 = "";
+        } else if index == 2 && slot3 != "" {
+            slot3 = "";
+        } else if index == 3 && slot4 != "" {
+            slot4 = "";
+        } else if index == 4 && slot5 != "" {
+            slot5 = "";
+        } else if index == 5 && slot6 != "" {
+            slot6 = "";
+        } else if index == 6 && slot7 != "" {
+            slot7 = "";
+        } else if index == 7 && slot8 != "" {
+            slot8 = "";
+        }
+        // 如果聚焦槽位为空，从右向左找第一个非空槽位删除
+        else if slot8 != "" {
+            slot8 = "";
+        } else if slot7 != "" {
+            slot7 = "";
+        } else if slot6 != "" {
+            slot6 = "";
+        } else if slot5 != "" {
+            slot5 = "";
+        } else if slot4 != "" {
+            slot4 = "";
+        } else if slot3 != "" {
+            slot3 = "";
+        } else if slot2 != "" {
+            slot2 = "";
+        } else if slot1 != "" {
+            slot1 = "";
+        }
+        // 删除后重新计算current-slot（从后往前找第一个非空槽位）
+        if slot8 != "" {
+            current-slot = 8;
+        } else if slot7 != "" {
+            current-slot = 7;
+        } else if slot6 != "" {
+            current-slot = 6;
+        } else if slot5 != "" {
+            current-slot = 5;
+        } else if slot4 != "" {
+            current-slot = 4;
+        } else if slot3 != "" {
+            current-slot = 3;
+        } else if slot2 != "" {
+            current-slot = 2;
+        } else if slot1 != "" {
+            current-slot = 1;
+        } else {
+            current-slot = 0;
+        }
+    }
+
+    VerticalLayout {
+        padding: 8px;
         spacing: 8px;
-        
-        Button {
-            text: "选择文件夹";
-            width: 100px;
-        }
-        
-        Button {
-            text: "上一张";
-            width: 70px;
-        }
-        
-        Button {
-            text: "下一张";
-            width: 70px;
-        }
-    }
-    
-    Rectangle {
-        vertical-stretch: 1;
-        background: #f0f0f0;
-        border-radius: 4px;
-        
+
         Text {
-            text: "图片显示区域";
-            horizontal-alignment: center;
-            vertical-alignment: center;
-            color: #999;
+            text: "图片标价";
+            font-size: 18px;
+            font-weight: 700;
+            color: #1976D2;
         }
-    }
-    
-    HorizontalLayout {
-        spacing: 4px;
-        
-        Button { text: "4+"; width: 50px; }
-        Button { text: "3+"; width: 50px; }
-        Button { text: "2+"; width: 50px; }
-        Button { text: "1+/+"; width: 50px; }
-        Button { text: "-"; width: 50px; }
-        Button { text: "?"; width: 50px; }
-        Button { text: "M"; width: 50px; }
-    }
-    
-    HorizontalLayout {
-        spacing: 8px;
-        
-        Button {
-            text: "确认标价";
-            width: 80px;
+
+        HorizontalLayout {
+            spacing: 8px;
+            height: 40px;
+
+            Button {
+                text: "选择文件夹";
+                width: 100px;
+                clicked => {
+                    root.select-folder();
+                }
+            }
+
+            Button {
+                text: "上一张";
+                width: 70px;
+            }
+
+            Button {
+                text: "下一张";
+                width: 70px;
+            }
         }
-        
-        Button {
-            text: "跳过";
-            width: 60px;
+
+        // 图片显示区域 + 文件夹列表
+        Rectangle {
+            vertical-stretch: 1;
+            background: #f0f0f0;
+            border-radius: 4px;
+            clip: true;
+
+            HorizontalLayout {
+                spacing: 20px;
+
+                // 图片显示区域 (70%)
+                Rectangle {
+                    horizontal-stretch: 7;
+                    background: transparent;
+
+                    if current-image == "": Text {
+                        text: "图片显示区域";
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        color: #999;
+                    }
+                }
+
+                // 文件夹列表面板 (30%)
+                Rectangle {
+                    horizontal-stretch: 3;
+                    background: #fafafa;
+                    border-width: 1px;
+                    border-color: #e0e0e0;
+                    border-radius: 4px;
+
+                    VerticalLayout {
+                        padding: 8px;
+                        spacing: 4px;
+                        alignment: start;
+
+                        Text {
+                            text: "文件夹列表";
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: #666;
+                            height: 20px;
+                        }
+
+                        for folder[i] in PricingPageAdapter.folders: Rectangle {
+                            height: 28px;
+                            background: PricingPageAdapter.selected-folder == i ? #e3f2fd : touch.has-hover ? #f5f5f5 : transparent;
+                            border-radius: 4px;
+
+                            touch := TouchArea {
+                                clicked => {
+                                    PricingPageAdapter.select-folder-item(i);
+                                }
+                            }
+
+                            Text {
+                                text: folder;
+                                font-size: 11px;
+                                color: PricingPageAdapter.selected-folder == i ? #1976D2 : #333;
+                                horizontal-alignment: left;
+                                vertical-alignment: center;
+                                x: 8px;
+                                overflow: elide;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 8个价位显示槽位 + 删除按钮
+        HorizontalLayout {
+            spacing: 4px;
+            height: 30px;
+
+            // 槽位1
+            Rectangle {
+                border-width: 1px;
+                border-color: current-slot == 0 ? #1976D2 : #bdbdbd;
+                border-radius: 4px;
+                background: current-slot == 0 ? #e3f2fd : white;
+                width: 50px;
+                height: 30px;
+                TouchArea {
+                    clicked => {
+                        root.focus-slot(0);
+                    }
+                }
+
+                Text {
+                    text: slot1;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            // 槽位2
+            Rectangle {
+                border-width: 1px;
+                border-color: current-slot == 1 ? #1976D2 : #bdbdbd;
+                border-radius: 4px;
+                background: current-slot == 1 ? #e3f2fd : white;
+                width: 50px;
+                height: 30px;
+                TouchArea {
+                    clicked => {
+                        root.focus-slot(1);
+                    }
+                }
+
+                Text {
+                    text: slot2;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            // 槽位3
+            Rectangle {
+                border-width: 1px;
+                border-color: current-slot == 2 ? #1976D2 : #bdbdbd;
+                border-radius: 4px;
+                background: current-slot == 2 ? #e3f2fd : white;
+                width: 50px;
+                height: 30px;
+                TouchArea {
+                    clicked => {
+                        root.focus-slot(2);
+                    }
+                }
+
+                Text {
+                    text: slot3;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            // 槽位4
+            Rectangle {
+                border-width: 1px;
+                border-color: current-slot == 3 ? #1976D2 : #bdbdbd;
+                border-radius: 4px;
+                background: current-slot == 3 ? #e3f2fd : white;
+                width: 50px;
+                height: 30px;
+                TouchArea {
+                    clicked => {
+                        root.focus-slot(3);
+                    }
+                }
+
+                Text {
+                    text: slot4;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            // 槽位5
+            Rectangle {
+                border-width: 1px;
+                border-color: current-slot == 4 ? #1976D2 : #bdbdbd;
+                border-radius: 4px;
+                background: current-slot == 4 ? #e3f2fd : white;
+                width: 50px;
+                height: 30px;
+                TouchArea {
+                    clicked => {
+                        root.focus-slot(4);
+                    }
+                }
+
+                Text {
+                    text: slot5;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            // 槽位6
+            Rectangle {
+                border-width: 1px;
+                border-color: current-slot == 5 ? #1976D2 : #bdbdbd;
+                border-radius: 4px;
+                background: current-slot == 5 ? #e3f2fd : white;
+                width: 50px;
+                height: 30px;
+                TouchArea {
+                    clicked => {
+                        root.focus-slot(5);
+                    }
+                }
+
+                Text {
+                    text: slot6;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            // 槽位7
+            Rectangle {
+                border-width: 1px;
+                border-color: current-slot == 6 ? #1976D2 : #bdbdbd;
+                border-radius: 4px;
+                background: current-slot == 6 ? #e3f2fd : white;
+                width: 50px;
+                height: 30px;
+                TouchArea {
+                    clicked => {
+                        root.focus-slot(6);
+                    }
+                }
+
+                Text {
+                    text: slot7;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            // 槽位8
+            Rectangle {
+                border-width: 1px;
+                border-color: current-slot == 7 ? #1976D2 : #bdbdbd;
+                border-radius: 4px;
+                background: current-slot == 7 ? #e3f2fd : white;
+                width: 50px;
+                height: 30px;
+                TouchArea {
+                    clicked => {
+                        root.focus-slot(7);
+                    }
+                }
+
+                Text {
+                    text: slot8;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+
+            Rectangle {
+                width: 8px;
+                background: transparent;
+            }
+
+            // 删除按钮
+            Rectangle {
+                width: 50px;
+                height: 30px;
+                background: del-touch.has-hover ? #ffcdd2 : #ef5350;
+                border-radius: 4px;
+
+                del-touch := TouchArea {
+                    clicked => {
+                        root.delete-slot(current-slot);
+                    }
+                }
+
+                Text {
+                    text: "←";
+                    color: white;
+                    font-size: 16px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        // 价位按钮
+        HorizontalLayout {
+            spacing: 4px;
+            height: 30px;
+
+            Button {
+                text: "4+";
+                width: 50px;
+                clicked => {
+                    root.input-code("4+");
+                }
+            }
+
+            Button {
+                text: "3+";
+                width: 50px;
+                clicked => {
+                    root.input-code("3+");
+                }
+            }
+
+            Button {
+                text: "2+";
+                width: 50px;
+                clicked => {
+                    root.input-code("2+");
+                }
+            }
+
+            Button {
+                text: "1+/+";
+                width: 50px;
+                clicked => {
+                    root.input-code("1+/+");
+                }
+            }
+
+            Button {
+                text: "-";
+                width: 50px;
+                clicked => {
+                    root.input-code("-");
+                }
+            }
+
+            Button {
+                text: "?";
+                width: 50px;
+                clicked => {
+                    root.input-code("?");
+                }
+            }
+
+            Button {
+                text: "M";
+                width: 50px;
+                clicked => {
+                    root.input-code("M");
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+            height: 30px;
+
+            Button {
+                text: "确认标价";
+                width: 80px;
+            }
+
+            Button {
+                text: "跳过";
+                width: 60px;
+            }
         }
     }
 }
@@ -251,43 +704,43 @@ export component PricingPage inherits VerticalBox {
 // 图片管理页面
 export component ManagePage inherits VerticalBox {
     in-out property <int> plan-id: 0;
-    
+
     Text {
         text: "图片管理";
         font-size: 18px;
         font-weight: 700;
         color: #1976D2;
     }
-    
+
     HorizontalLayout {
         spacing: 8px;
-        
+
         Button {
             text: "图片源";
             width: 70px;
         }
-        
+
         Button {
             text: "待标价";
             width: 70px;
         }
-        
+
         Button {
             text: "已标价";
             width: 70px;
         }
-        
+
         Button {
             text: "待处理";
             width: 70px;
         }
     }
-    
+
     Rectangle {
         vertical-stretch: 1;
         background: #f0f0f0;
         border-radius: 4px;
-        
+
         Text {
             text: "图片列表区域";
             horizontal-alignment: center;
@@ -300,33 +753,33 @@ export component ManagePage inherits VerticalBox {
 // Excel配对页面
 export component ExcelPage inherits VerticalBox {
     in-out property <int> plan-id: 0;
-    
+
     Text {
         text: "Excel配对";
         font-size: 18px;
         font-weight: 700;
         color: #1976D2;
     }
-    
+
     HorizontalLayout {
         spacing: 8px;
-        
+
         Button {
             text: "导入Excel";
             width: 80px;
         }
-        
+
         Button {
             text: "导出结果";
             width: 80px;
         }
     }
-    
+
     Rectangle {
         vertical-stretch: 1;
         background: #f0f0f0;
         border-radius: 4px;
-        
+
         Text {
             text: "Excel数据和配对区域";
             horizontal-alignment: center;
@@ -343,7 +796,10 @@ export component App inherits Window {
     //preferred-width: 680px;
     width: 772px;
     min-height: 600px;
-    
+
+    // 调试模式：true时禁用计划卡限制
+    in-out property <bool> debug-mode: true;
+
     // 当前选中的计划ID
     in-out property <int> current-plan-id: 0;
     // 当前选中的计划名称
@@ -352,42 +808,44 @@ export component App inherits Window {
     in-out property <string> current-page: "plan";
     // 侧边栏是否展开
     in-out property <bool> sidebar-expanded: true;
-    
+
     // 侧边栏切换回调，用于通知Rust调整窗口大小
     callback sidebar-toggled(bool);
-    
+    // 选择文件夹回调
+    callback select-folder();
+
     HorizontalLayout {
         spacing: 0;
-        
+
         // 侧边栏 - 支持展开/收起动画
         Rectangle {
             // 展开时120px，收起时48px
             width: sidebar-expanded ? 120px : 48px;
             background: #f5f5f5;
-            
+
             // 宽度变化动画：200ms缓入缓出
             animate width {
                 duration: 200ms;
                 easing: ease-in-out;
             }
-            
+
             VerticalLayout {
                 padding: 8px;
                 spacing: 8px;
-                
+
                 // 侧边栏切换按钮
                 Rectangle {
                     height: 36px;
                     background: toggle-touch.has-hover ? #e0e0e0 : transparent;
                     border-radius: 4px;
-                    
+
                     toggle-touch := TouchArea {
                         clicked => {
                             sidebar-expanded = !sidebar-expanded;
                             root.sidebar-toggled(sidebar-expanded);
                         }
                     }
-                    
+
                     Text {
                         text: sidebar-expanded ? "◀" : "▶";
                         font-size: 16px;
@@ -396,13 +854,13 @@ export component App inherits Window {
                         color: #666;
                     }
                 }
-                
+
                 // 应用标题
                 Rectangle {
                     height: 40px;
                     background: #1976D2;
                     border-radius: 4px;
-                    
+
                     if sidebar-expanded: Text {
                         text: "图片标价工具";
                         color: white;
@@ -418,17 +876,19 @@ export component App inherits Window {
                         vertical-alignment: center;
                     }
                 }
-                
+
                 // 计划管理按钮
                 Rectangle {
                     height: 36px;
                     background: current-page == "plan" ? #e3f2fd : transparent;
                     border-radius: 4px;
-                    
+
                     TouchArea {
-                        clicked => { current-page = "plan"; }
+                        clicked => {
+                            current-page = "plan";
+                        }
                     }
-                    
+
                     if sidebar-expanded: Text {
                         text: "📋 添加计划";
                         color: current-page == "plan" ? #1976D2 : #666;
@@ -445,13 +905,13 @@ export component App inherits Window {
                         color: current-page == "plan" ? #1976D2 : #666;
                     }
                 }
-                
+
                 // 分隔线
                 Rectangle {
                     height: 1px;
                     background: #e0e0e0;
                 }
-                
+
                 // 子功能标题
                 if sidebar-expanded: Text {
                     text: "当前计划功能";
@@ -459,22 +919,22 @@ export component App inherits Window {
                     color: #999;
                     height: 20px;
                 }
-                
+
                 // 图片标价按钮
                 Rectangle {
                     height: 36px;
                     background: current-page == "pricing" ? #e3f2fd : transparent;
                     border-radius: 4px;
-                    opacity: current-plan-id > 0 ? 1.0 : 0.5;
-                    
+                    opacity: (debug-mode || current-plan-id > 0) ? 1.0 : 0.5;
+
                     TouchArea {
                         clicked => {
-                            if current-plan-id > 0 {
+                            if debug-mode || current-plan-id > 0 {
                                 current-page = "pricing";
                             }
                         }
                     }
-                    
+
                     if sidebar-expanded: Text {
                         text: "🖼️ 图片标价";
                         color: current-page == "pricing" ? #1976D2 : #666;
@@ -491,22 +951,22 @@ export component App inherits Window {
                         color: current-page == "pricing" ? #1976D2 : #666;
                     }
                 }
-                
+
                 // 图片管理按钮
                 Rectangle {
                     height: 36px;
                     background: current-page == "manage" ? #e3f2fd : transparent;
                     border-radius: 4px;
-                    opacity: current-plan-id > 0 ? 1.0 : 0.5;
-                    
+                    opacity: (debug-mode || current-plan-id > 0) ? 1.0 : 0.5;
+
                     TouchArea {
                         clicked => {
-                            if current-plan-id > 0 {
+                            if debug-mode || current-plan-id > 0 {
                                 current-page = "manage";
                             }
                         }
                     }
-                    
+
                     if sidebar-expanded: Text {
                         text: "📁 图片管理";
                         color: current-page == "manage" ? #1976D2 : #666;
@@ -523,22 +983,22 @@ export component App inherits Window {
                         color: current-page == "manage" ? #1976D2 : #666;
                     }
                 }
-                
+
                 // Excel配对按钮
                 Rectangle {
                     height: 36px;
                     background: current-page == "excel" ? #e3f2fd : transparent;
                     border-radius: 4px;
-                    opacity: current-plan-id > 0 ? 1.0 : 0.5;
-                    
+                    opacity: (debug-mode || current-plan-id > 0) ? 1.0 : 0.5;
+
                     TouchArea {
                         clicked => {
-                            if current-plan-id > 0 {
+                            if debug-mode || current-plan-id > 0 {
                                 current-page = "excel";
                             }
                         }
                     }
-                    
+
                     if sidebar-expanded: Text {
                         text: "📊 Excel配对";
                         color: current-page == "excel" ? #1976D2 : #666;
@@ -557,23 +1017,27 @@ export component App inherits Window {
                 }
             }
         }
-        
+
         // 主内容区域
         Rectangle {
             horizontal-stretch: 1;
             background: white;
             clip: true;
-            
+            //硬编码一个个百分比测试的不该这么搞
+            width: 83%;
             VerticalLayout {
-                padding: 16px;
+                padding: 0;
                 alignment: stretch;
-                
+
+                if current-page == "pricing": PricingPage {
+                    plan-id <=> current-plan-id;
+                    select-folder => {
+                        root.select-folder();
+                    }
+                }
                 if current-page == "plan": PlanPage {
                     plan-id <=> current-plan-id;
                     plan-name <=> current-plan-name;
-                }
-                if current-page == "pricing": PricingPage {
-                    plan-id <=> current-plan-id;
                 }
                 if current-page == "manage": ManagePage {
                     plan-id <=> current-plan-id;
