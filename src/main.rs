@@ -400,6 +400,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(id) => {
                     println!("Priced image saved, id={}", id);
                     app.global::<ui::PricingPageAdapter>().invoke_clear_slots();
+                    app.global::<ui::PricingPageAdapter>().set_status_message("标价成功".into());
                     
                     if let Ok(Some(plan)) = db_clone.get_plan(plan_id as i64) {
                         categories_model_clone.set_vec(load_categories_for_plan(&base_dir_clone, &plan.name));
@@ -424,6 +425,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(()) => {
                     println!("Image copied to pending");
                     app.global::<ui::PricingPageAdapter>().invoke_clear_slots();
+                    app.global::<ui::PricingPageAdapter>().set_status_message("已跳过，存入待标价".into());
                     
                     if let Ok(Some(plan)) = db_clone.get_plan(plan_id as i64) {
                         categories_model_clone.set_vec(load_categories_for_plan(&base_dir_clone, &plan.name));
@@ -440,6 +442,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(app) = weak_clone.upgrade() {
             println!("Set project type: {}", ptype);
             app.global::<ui::PricingPageAdapter>().set_project_type(ptype);
+        }
+    });
+    
+    // 清除状态消息回调
+    let weak_clone = weak.clone();
+    app.global::<ui::PricingPageAdapter>().on_clear_status(move || {
+        if let Some(app) = weak_clone.upgrade() {
+            app.global::<ui::PricingPageAdapter>().set_status_message("".into());
         }
     });
     

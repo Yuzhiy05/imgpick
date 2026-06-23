@@ -356,6 +356,8 @@ export global PricingPageAdapter {
     in-out property <int> current-slot: 0;
     // 当前图片种类：""=未选择, "blood"=血型, "antibody"=抗筛, "crossmatch"=交叉配血
     in-out property <string> project-type: "";
+    // 操作状态消息
+    in-out property <string> status-message: "";
 
     callback select-folder-item(int);
     callback load-images(int);  // 加载指定文件夹的图片
@@ -368,6 +370,7 @@ export global PricingPageAdapter {
     callback focus-slot(int);  // 聚焦槽位
     callback delete-slot(int);  // 删除槽位
     callback set-project-type(string);  // 设置图片种类
+    callback clear-status();  // 清除状态消息
     
     // 输入价位函数
     input-code(code) => {
@@ -448,6 +451,15 @@ export component PricingPage inherits Rectangle {
 
     callback select-folder();
 
+    // 2秒后自动清除状态消息（单次触发）
+    Timer {
+        interval: 2s;
+        running: PricingPageAdapter.status-message != "";
+        triggered => {
+            PricingPageAdapter.clear-status();
+        }
+    }
+
     VerticalLayout {
         padding: 12px;
         spacing: 8px;
@@ -457,6 +469,21 @@ export component PricingPage inherits Rectangle {
             font-size: 18px;
             font-weight: 700;
             color: #1976D2;
+        }
+
+        // 状态消息
+        if PricingPageAdapter.status-message != "": Rectangle {
+            height: 28px;
+            background: #e8f5e9;
+            border-radius: 4px;
+
+            Text {
+                text: PricingPageAdapter.status-message;
+                color: #2e7d32;
+                font-size: 13px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
         }
 
         HorizontalLayout {
