@@ -59,6 +59,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let window = app.window();
     window.set_size(LogicalSize::new(1000.0, 800.0));
     
+    // 计算计划列表列数：窗口宽度 / (卡片宽度 + 间距)
+    let card_width = 120;
+    let card_spacing = 12;
+    let plan_columns = 1000 / (card_width + card_spacing);
+    app.global::<ui::PlanPageAdapter>().set_plan_columns(plan_columns as i32);
+    
     // Load initial plans (使用共享VecModel，避免替换整个模型导致崩溃)
     let plans_model = create_plans_model(&db);
     app.global::<ui::PlanPageAdapter>().set_plans(plans_model.clone().into());

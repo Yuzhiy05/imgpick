@@ -91,6 +91,7 @@ export struct PlanData {
 // 计划页面适配器（全局单例）
 export global PlanPageAdapter {
     in-out property <[PlanData]> plans: [];
+    in-out property <int> plan-columns: 6;
 
     callback create-plan(string);
     callback delete-plan(int);
@@ -107,11 +108,10 @@ export component PlanPage inherits Rectangle {
     property <length> card-width: 120px;
     property <length> list-width: 620px;
     property <length> card-spacing: 12px;
-    property <int> plan-columns: list-width / (card-width + card-spacing);
 
     VerticalLayout {
         alignment: start;
-        padding: 0;
+        padding: 10px;
         spacing: 12px;
 
         Text {
@@ -154,7 +154,7 @@ export component PlanPage inherits Rectangle {
             }
         }
 
-        Rectangle {
+        plan-list := Rectangle {
             vertical-stretch: 1;
             horizontal-stretch: 1;
             min-height: 316px;
@@ -181,8 +181,8 @@ export component PlanPage inherits Rectangle {
                     spacing: 12px;
 
                     for plan[i] in PlanPageAdapter.plans: PlanItem {
-                        row: i / plan-columns;
-                        col: mod(i, plan-columns);
+                        row: i / PlanPageAdapter.plan-columns;
+                        col: mod(i, PlanPageAdapter.plan-columns);
                         plan-id: plan.id;
                         plan-name: plan.name;
                         is-selected: plan.id == root.plan-id;
@@ -313,7 +313,7 @@ export component PricingPage inherits Rectangle {
     callback select-folder();
 
     VerticalLayout {
-        padding: 0;
+        padding: 12px;
         spacing: 8px;
 
         Text {
@@ -645,7 +645,7 @@ export component App inherits Window {
     callback select-folder();
 
     HorizontalLayout {
-        spacing: 0;
+        spacing: 12px;
 
         // 侧边栏 - 支持展开/收起动画
         Rectangle {
