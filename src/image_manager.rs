@@ -29,7 +29,7 @@ impl ImageManager {
             .map_err(|e| format!("获取计划失败: {}", e))?
             .ok_or_else(|| "计划未找到".to_string())?;
 
-        let source_dir = self.base_dir.join(&plan.name).join("source");
+        let source_dir = self.plan_category_dir(&plan.name, "src");
         std::fs::create_dir_all(&source_dir)
             .map_err(|e| format!("创建源目录失败: {}", e))?;
 

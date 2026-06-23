@@ -277,8 +277,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // 选择文件夹回调
     let weak_clone = weak.clone();
+    let db_clone = db.clone();
+    let base_dir_clone = base_dir.clone();
+    let categories_model_clone = categories_model.clone();
     app.on_select_folder(move || {
         if let Some(app) = weak_clone.upgrade() {
+            let plan_id = app.global::<ui::PricingPageAdapter>().get_plan_id();
+            if plan_id == 0 {
+                eprintln!("请先选择一个计划");
+                return;
+            }
+
             let folder = rfd::FileDialog::new()
                 .set_title("选择图片文件夹")
                 .pick_folder();
@@ -287,26 +296,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let full_path = path.display().to_string();
                 println!("Selected folder: {}", full_path);
                 
-                // 父目录路径
-                let parent_path = path.parent().unwrap_or(&path).display().to_string();
-                // 文件夹名
-                let folder_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
-                
-                // 显示用：父目录名/文件夹名（两级）
-                let parent_name = std::path::Path::new(&parent_path).file_name().unwrap_or_default().to_string_lossy();
-                let display_path = if parent_name.is_empty() {
-                    folder_name.clone()
-                } else {
-                    format!("{}/{}", parent_name, folder_name)
-                };
-                
-                let folders = app.global::<ui::PricingPageAdapter>().get_folders();
-                let mut new_folders: Vec<slint::SharedString> = folders.iter().collect();
-                new_folders.push(display_path.into());
-                app.global::<ui::PricingPageAdapter>().set_folders(new_folders.as_slice().into());
-                
-                // 保存父目录路径作为前缀
-                app.global::<ui::PricingPageAdapter>().set_folder_prefix(parent_path.into());
+                // 复制图片到计划的 src/ 文件夹
+                let image_manager = image_manager::ImageManager::new(db_clone.clone(), base_dir_clone.clone());
+                match image_manager.import_images_from_folder(plan_id as i64, &path) {
+                    Ok(images) => {
+                        println!("Imported {} images to src/", images.len());
+                        app.global::<ui::PricingPageAdapter>().set_status_message(format!("已导入 {} 张图片", images.len()).into());
+                        
+                        // 刷新分类和进度
+                        if let Ok(Some(plan)) = db_clone.get_plan(plan_id as i64) {
+                            let cats = load_categories_for_plan(&base_dir_clone, &plan.name);
+                            update_pricing_progress(&app, &cats);
+                            categories_model_clone.set_vec(cats);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Import failed: {}", e);
+                        app.global::<ui::PricingPageAdapter>().set_status_message(format!("导入失败: {}", e).into());
+                    }
+                }
             }
         }
     });
