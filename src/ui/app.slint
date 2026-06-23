@@ -335,6 +335,9 @@ export component PlanPage inherits Rectangle {
 // 图片标价页面适配器（全局单例）
 export global PricingPageAdapter {
     in-out property <int> plan-id: 0;
+    in-out property <string> plan-name: "";
+    in-out property <int> processed-count: 0;
+    in-out property <int> total-count: 0;
     in-out property <[string]> folders: [];
     in-out property <int> selected-folder: -1;
     in-out property <[string]> images: [];  // 当前文件夹的图片路径列表
@@ -445,6 +448,95 @@ export global PricingPageAdapter {
     }
 }
 
+// 图片标价页面-分类项组件（紧凑版）
+export component PricingCategoryItem inherits Rectangle {
+    in-out property <string> category-name: "";
+    in-out property <string> display-name: "";
+    in-out property <int> image-count: 0;
+    in-out property <bool> expanded: false;
+    in-out property <[string]> images: [];
+    in-out property <bool> is-selected: false;
+
+    callback toggle-clicked();
+    callback image-clicked(int);
+
+    height: expanded ? (22px + images.length * 20px) : 22px;
+    background: is-selected ? #e3f2fd : #fafafa;
+    border-radius: 3px;
+
+    VerticalLayout {
+        padding: 0;
+        spacing: 0;
+
+        // 分类标题
+        Rectangle {
+            height: 22px;
+            background: header-touch.has-hover ? #f0f0f0 : transparent;
+            border-radius: 3px;
+
+            header-touch := TouchArea {
+                clicked => { root.toggle-clicked(); }
+            }
+
+            HorizontalLayout {
+                padding-left: 4px;
+                padding-right: 4px;
+                spacing: 2px;
+
+                Text {
+                    text: expanded ? "▼" : "▶";
+                    font-size: 8px;
+                    color: #666;
+                    vertical-alignment: center;
+                    width: 10px;
+                }
+
+                Text {
+                    text: display-name;
+                    font-size: 10px;
+                    font-weight: 600;
+                    color: #333;
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: "(" + image-count + ")";
+                    font-size: 9px;
+                    color: #999;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        // 图片名列表（展开时）
+        if expanded && images.length > 0: VerticalLayout {
+            padding-left: 16px;
+            padding-right: 4px;
+            padding-bottom: 2px;
+            spacing: 1px;
+
+            for image[i] in images: Rectangle {
+                height: 18px;
+                background: image-touch.has-hover ? #e8e8e8 : transparent;
+                border-radius: 2px;
+
+                image-touch := TouchArea {
+                    clicked => { root.image-clicked(i); }
+                }
+
+                Text {
+                    text: image;
+                    font-size: 9px;
+                    color: #555;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+}
+
 // 图片标价页面
 export component PricingPage inherits Rectangle {
     in-out property <int> plan-id: 0;
@@ -510,6 +602,23 @@ export component PricingPage inherits Rectangle {
                 clicked => { PricingPageAdapter.next-image(); }
             }
 
+            // 当前计划 + 进度
+            Rectangle {
+                horizontal-stretch: 1;
+                background: #f5f5f5;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: #e0e0e0;
+                Text {
+                    text: PricingPageAdapter.plan-name != "" ? "计划: " + PricingPageAdapter.plan-name + "  已处理: " + PricingPageAdapter.processed-count + "/" + PricingPageAdapter.total-count : "未选择计划";
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    color: #1976D2;
+                    font-size: 12px;
+                    font-weight: 600;
+                }
+            }
+
             // 当前图片种类显示
             Rectangle {
                 width: 100px;
@@ -526,9 +635,26 @@ export component PricingPage inherits Rectangle {
                     font-size: 12px;
                 }
             }
+
+            // 全部完成提示
+            if PricingPageAdapter.total-count > 0 && PricingPageAdapter.processed-count >= PricingPageAdapter.total-count: Rectangle {
+                width: 100px;
+                background: #e8f5e9;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: #2e7d32;
+                Text {
+                    text: "全部完成";
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    color: #2e7d32;
+                    font-size: 12px;
+                    font-weight: 600;
+                }
+            }
         }
 
-        // 图片显示区域 + 文件夹列表
+        // 图片显示区域 + 分类列表
         Rectangle {
             vertical-stretch: 1;
             background: #f0f0f0;
@@ -536,11 +662,11 @@ export component PricingPage inherits Rectangle {
             clip: true;
 
             HorizontalLayout {
-                spacing: 20px;
+                spacing: 12px;
 
-                // 图片显示区域 (80%)
+                // 图片显示区域 (90%)
                 Rectangle {
-                    horizontal-stretch: 8;
+                    horizontal-stretch: 9;
                     background: transparent;
 
                     if PricingPageAdapter.current-image-path == "": Text {
@@ -558,44 +684,52 @@ export component PricingPage inherits Rectangle {
                     }
                 }
 
-                // 文件夹列表面板 (20%)
+                // 分类列表面板 (10%)
                 Rectangle {
-                    horizontal-stretch: 2;
+                    horizontal-stretch: 1;
+                    min-width: 140px;
                     background: #fafafa;
                     border-width: 1px;
                     border-color: #e0e0e0;
                     border-radius: 4px;
 
                     VerticalLayout {
-                        padding: 8px;
-                        spacing: 4px;
-                        alignment: start;
+                        padding: 4px;
+                        spacing: 2px;
 
                         Text {
-                            text: "文件夹列表";
-                            font-size: 12px;
+                            text: "图片分类";
+                            font-size: 11px;
                             font-weight: 600;
                             color: #666;
-                            height: 20px;
+                            height: 18px;
                         }
 
-                        for folder[i] in PricingPageAdapter.folders: Rectangle {
-                            height: 28px;
-                            background: PricingPageAdapter.selected-folder == i ? #e3f2fd : touch.has-hover ? #f5f5f5 : transparent;
-                            border-radius: 4px;
+                        if ManagePageAdapter.categories.length == 0: Text {
+                            text: "暂无数据";
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            color: #999;
+                            font-size: 11px;
+                        }
 
-                            touch := TouchArea {
-                                clicked => { PricingPageAdapter.select-folder-item(i); }
-                            }
+                        if ManagePageAdapter.categories.length > 0: VerticalLayout {
+                            for category[i] in ManagePageAdapter.categories: PricingCategoryItem {
+                                category-name: category.name;
+                                display-name: category.display-name;
+                                image-count: category.count;
+                                expanded: category.expanded;
+                                images: category.images;
+                                is-selected: ManagePageAdapter.selected-category == i;
 
-                            Text {
-                                text: folder;
-                                font-size: 11px;
-                                color: PricingPageAdapter.selected-folder == i ? #1976D2 : #333;
-                                horizontal-alignment: left;
-                                vertical-alignment: center;
-                                x: 8px;
-                                overflow: elide;
+                                toggle-clicked => {
+                                    ManagePageAdapter.toggle-category(i);
+                                }
+
+                                image-clicked(idx) => {
+                                    ManagePageAdapter.select-category(i);
+                                    ManagePageAdapter.select-image(idx);
+                                }
                             }
                         }
                     }

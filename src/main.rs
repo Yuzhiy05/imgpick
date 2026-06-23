@@ -133,6 +133,21 @@ fn clear_manage_slots(app: &ui::App) {
     app.global::<ui::ManagePageAdapter>().set_project_type_display("".into());
 }
 
+fn update_pricing_progress(app: &ui::App, categories: &[ui::ImageCategoryData]) {
+    let mut src_count: i32 = 0;
+    let mut processed: i32 = 0;
+    for cat in categories {
+        match cat.name.as_str() {
+            "src" => src_count = cat.count,
+            "pend" | "priced" | "proc" => processed += cat.count,
+            _ => {}
+        }
+    }
+    let total = src_count + processed;
+    app.global::<ui::PricingPageAdapter>().set_total_count(total);
+    app.global::<ui::PricingPageAdapter>().set_processed_count(processed);
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize database
     let conn = Connection::open("imgpick.db")?;
@@ -225,9 +240,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     app.set_current_plan_id(id);
                     app.set_current_plan_name(plan.name.clone().into());
                     app.global::<ui::PricingPageAdapter>().set_plan_id(id);
+                    app.global::<ui::PricingPageAdapter>().set_plan_name(plan.name.clone().into());
                     app.global::<ui::ManagePageAdapter>().set_plan_name(plan.name.clone().into());
                     
                     let cats = load_categories_for_plan(&base_dir_clone, &plan.name);
+                    update_pricing_progress(&app, &cats);
                     categories_model_clone.set_vec(cats);
                     app.global::<ui::ManagePageAdapter>().set_selected_category(-1);
                     app.global::<ui::ManagePageAdapter>().set_selected_image(-1);
@@ -239,6 +256,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     app.set_current_plan_id(0);
                     app.set_current_plan_name("".into());
                     app.global::<ui::PricingPageAdapter>().set_plan_id(0);
+                    app.global::<ui::PricingPageAdapter>().set_plan_name("".into());
+                    app.global::<ui::PricingPageAdapter>().set_total_count(0);
+                    app.global::<ui::PricingPageAdapter>().set_processed_count(0);
                     
                     categories_model_clone.set_vec(vec![]);
                     app.global::<ui::ManagePageAdapter>().set_selected_category(-1);
@@ -403,7 +423,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     app.global::<ui::PricingPageAdapter>().set_status_message("标价成功".into());
                     
                     if let Ok(Some(plan)) = db_clone.get_plan(plan_id as i64) {
-                        categories_model_clone.set_vec(load_categories_for_plan(&base_dir_clone, &plan.name));
+                        let cats = load_categories_for_plan(&base_dir_clone, &plan.name);
+                        update_pricing_progress(&app, &cats);
+                        categories_model_clone.set_vec(cats);
                     }
                 }
                 Err(e) => eprintln!("Failed to save pricing: {}", e),
@@ -428,7 +450,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     app.global::<ui::PricingPageAdapter>().set_status_message("已跳过，存入待标价".into());
                     
                     if let Ok(Some(plan)) = db_clone.get_plan(plan_id as i64) {
-                        categories_model_clone.set_vec(load_categories_for_plan(&base_dir_clone, &plan.name));
+                        let cats = load_categories_for_plan(&base_dir_clone, &plan.name);
+                        update_pricing_progress(&app, &cats);
+                        categories_model_clone.set_vec(cats);
                     }
                 }
                 Err(e) => eprintln!("Failed to skip image: {}", e),
@@ -514,7 +538,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     
                     app.global::<ui::ManagePageAdapter>().set_selected_image_path(path.display().to_string().into());
                     if let Ok(img) = slint::Image::load_from_path(&path) {
-                        app.global::<ui::ManagePageAdapter>().set_selected_image_data(img);
+                        app.global::<ui::ManagePageAdapter>().set_selected_image_data(img.clone());
+                        
+                        // 待标价图片点击：加载到标价区域继续标价
+                        if cat_name == "pend" {
+                            app.global::<ui::PricingPageAdapter>().set_current_image_path(path.display().to_string().into());
+                            app.global::<ui::PricingPageAdapter>().set_current_image(img);
+                            app.global::<ui::PricingPageAdapter>().invoke_clear_slots();
+                        }
                     }
                     
                     // 如果是已标价图片，从DB读取价位和项目类型
