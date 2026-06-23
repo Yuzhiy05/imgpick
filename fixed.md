@@ -192,8 +192,8 @@ slint = { version = "1.16.1", features = ["default"] }
 | 问题类型 | 数量 | 主要原因 |
 |---------|------|---------|
 | Slint语法/API | 4 | 不熟悉Slint特有语法 |
-| Rust类型系统 | 3 | 库版本差异、trait导入 |
-| 测试逻辑 | 1 | 状态管理理解错误 |
+| Rust类型系统 | 4 | 库版本差异、trait导入、借用移动 |
+| 测试逻辑 | 2 | 状态管理理解错误、断言过时 |
 | 依赖配置 | 2 | dev-dependencies、edition |
 | 上游问题 | 1 | Slint/ICU4X已知bug |
 | Slint布局/模型 | 5 | Flickable宽度传播、GridLayout空模型崩溃、ListView动态高度、ScrollView缺失、高度计算不一致 |
@@ -202,6 +202,8 @@ slint = { version = "1.16.1", features = ["default"] }
 | 渲染性能 | 1 | 700+项for循环导致黑屏 |
 | 回调/线程 | 2 | thread::spawn不可靠、回调未刷新数据 |
 | 路径处理 | 2 | 混用斜杠、import路径错误 |
+| 回调逻辑 | 1 | 未调用plan_manager.create_plan |
+| 结构体设计 | 1 | 未实现Clone、字段未公开 |
 
 **关键经验**:
 1. Slint组件必须显式导出才能被引用
@@ -217,7 +219,10 @@ slint = { version = "1.16.1", features = ["default"] }
 11. Timer比thread::spawn更可靠，跑在UI线程上
 12. 图片状态以DB为唯一真相源，文件夹内容是DB的镜像
 13. 高度计算公式必须与实际项目高度+spacing一致
-8. 不同UI主题对控件样式影响大，fluent-light主题显示效果较好
+14. 回调中需要调用正确的管理器方法，不能直接调用底层db方法
+15. 结构体需要在闭包中使用时，确保实现Clone trait
+16. PathBuf传入函数后会被移动，需要再次使用时应先clone()
+17. 修改文件夹名后记得同步更新测试断言
 
 ---
 
@@ -617,4 +622,87 @@ VerticalLayout {
         height: 20px;  // 原来是 18px
     }
 }
+```
+
+---
+
+## 29. 创建计划后文件夹未自动创建
+
+**问题描述**: 在"添加计划"页面创建计划后，`plans/{计划名}/` 文件夹未自动创建。
+
+**原因**: `main.rs` 中 `on_create_plan` 回调直接调用 `db.create_plan()`，没有调用 `plan_manager.create_plan()`，导致文件夹创建逻辑未执行。
+
+**解决方案**: 修改 `on_create_plan` 回调，改用 `plan_manager.create_plan()`。
+
+```rust
+// 错误
+app.global::<ui::PlanPageAdapter>().on_create_plan(move |name| {
+    let db = db_clone.clone();
+    match db.create_plan(&name_str) { ... }
+});
+
+// 正确
+app.global::<ui::PlanPageAdapter>().on_create_plan(move |name| {
+    match plan_manager_clone.create_plan(&name_str) { ... }
+});
+```
+
+---
+
+## 30. PlanManager结构体无法克隆
+
+**问题描述**: `PlanManager` 在闭包中使用时提示 `closure may outlive the current function`。
+
+**原因**: `PlanManager` 未实现 `Clone` trait，且 `db` 字段是私有的。
+
+**解决方案**: 添加 `#[derive(Clone)]` 并将 `db` 字段改为 `pub`。
+
+```rust
+#[derive(Clone)]
+pub struct PlanManager {
+    pub db: Arc<Database>,
+    base_dir: PathBuf,
+}
+```
+
+---
+
+## 31. PathBuf移动后借用错误
+
+**问题描述**: `base_dir` 传入 `PlanManager::new` 后无法再次使用。
+
+**原因**: `PathBuf` 未实现 `Copy` trait，移动后不能再借用。
+
+**解决方案**: 传入时使用 `clone()`。
+
+```rust
+// 错误
+let plan_manager = plan_manager::PlanManager::new(db.clone(), base_dir);
+let base_dir_clone = base_dir.clone();  // 编译错误
+
+// 正确
+let plan_manager = plan_manager::PlanManager::new(db.clone(), base_dir.clone());
+let base_dir_clone = base_dir.clone();  // OK
+```
+
+---
+
+## 32. 测试中断言旧文件夹名
+
+**问题描述**: `test_create_directory_structure` 测试失败，断言 `source` 文件夹不存在。
+
+**原因**: 测试代码仍使用旧的文件夹名（`source`、`pending`、`processing`），但实际已改为英文（`src`、`pend`、`proc`）。
+
+**解决方案**: 更新测试断言为新的文件夹名。
+
+```rust
+// 错误
+assert!(plan_dir.join("source").exists());
+assert!(plan_dir.join("pending").exists());
+assert!(plan_dir.join("processing").exists());
+
+// 正确
+assert!(plan_dir.join("src").exists());
+assert!(plan_dir.join("pend").exists());
+assert!(plan_dir.join("proc").exists());
 ```
