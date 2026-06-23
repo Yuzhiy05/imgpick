@@ -347,6 +347,49 @@ impl ImageManager {
 3. 实现拖拽配对功能
 4. 实现最终导出功能
 
+### 阶段7: 图片浏览体验优化 ✅
+
+#### 7.1 图片源展开排序
+**需求**：图片源中展开的图片按图片名升序排列
+**实现**：`scan_folder_images` 函数中使用 `images.sort()` 进行排序
+**状态**：✅ 已完成
+
+#### 7.2 当前图片高亮显示
+**需求**：图片显示时，在展开栏当前图片名字处高亮或有其他提示，表示当前正在显示该图片
+**实现**：
+- 在 `PricingCategoryItem` 和 `ImageCategoryItem` 组件中添加 `selected-image-index` 属性
+- 当图片索引匹配时，显示蓝色背景（`#bbdefb`）和蓝色边框
+- 文字颜色变为蓝色（`#1976D2`）并加粗显示
+**状态**：✅ 已完成
+
+#### 7.3 前一张/后一张按钮逻辑修正
+**需求**：前一张/后一张按钮按当前高亮所在集合中按顺序切换
+**场景**：
+- 当前显示"待标价"栏中的图片
+- 点击"下一张"按钮 → 显示"待标价"展开栏中的下一张图
+- 点击"上一张"按钮 → 显示"待标价"展开栏中的上一张图
+**核心**：让视觉（高亮位置）和按钮逻辑（前后切换）保持一致
+**实现**：
+- 修改 `on_select_image` 回调，更新 `PricingPageAdapter` 的 `images` 列表和 `current_image_index`
+- 修改 `on_next_image` 和 `on_prev_image` 回调，同步更新 `ManagePageAdapter` 的高亮索引
+- 在 `ManagePageAdapter` 中添加 `current_image_index` 和 `current_category_index` 属性
+**状态**：✅ 已完成
+
+### 阶段8: 清除所有已标价功能 ✅
+
+#### 8.1 清除所有已标价按钮
+**需求**：在图片标价页面添加"清除所有已标价"按钮，删除该计划下所有已标价图片
+**实现**：
+- 在PricingPage UI中添加"清除所有已标价"按钮
+- 在PricingPageAdapter中添加 `clear-all-priced` 回调
+- 在ImageManager中添加 `clear_priced_images` 方法
+- 在Database中添加 `delete_images_by_category` 方法
+**功能**：
+1. 删除数据库中绑定该计划的所有已标价类型的图片信息
+2. 删除该计划下所有已标价文件夹下的所有图片文件
+3. 刷新分类和进度显示
+**状态**：✅ 已完成
+
 ## 关键功能详解
 
 ### 图片编号输入

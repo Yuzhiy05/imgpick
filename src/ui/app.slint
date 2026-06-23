@@ -116,6 +116,7 @@ export component ImageCategoryItem inherits Rectangle {
     in-out property <bool> expanded: false;
     in-out property <[string]> images: [];
     in-out property <bool> is-selected: false;
+    in-out property <int> selected-image-index: -1;
     
     callback toggle-clicked();
     callback image-clicked(int);
@@ -181,8 +182,10 @@ export component ImageCategoryItem inherits Rectangle {
             
             for image[i] in images: Rectangle {
                 height: 22px;
-                background: image-touch.has-hover ? #e8e8e8 : transparent;
+                background: i == selected-image-index ? #bbdefb : image-touch.has-hover ? #e8e8e8 : transparent;
                 border-radius: 2px;
+                border-width: i == selected-image-index ? 1px : 0px;
+                border-color: i == selected-image-index ? #1976D2 : transparent;
                 
                 image-touch := TouchArea {
                     clicked => {
@@ -193,7 +196,8 @@ export component ImageCategoryItem inherits Rectangle {
                 Text {
                     text: image;
                     font-size: 11px;
-                    color: #555;
+                    color: i == selected-image-index ? #1976D2 : #555;
+                    font-weight: i == selected-image-index ? 600 : 400;
                     vertical-alignment: center;
                     overflow: elide;
                 }
@@ -222,6 +226,10 @@ export global ManagePageAdapter {
     in-out property <string> slot7: "";
     in-out property <string> slot8: "";
     in-out property <string> project-type-display: "";
+    
+    // 当前选中的图片索引（用于高亮显示）
+    in-out property <int> current-image-index: -1;
+    in-out property <int> current-category-index: -1;
     
     callback load-categories(int);
     callback toggle-category(int);
@@ -374,6 +382,7 @@ export global PricingPageAdapter {
     callback delete-slot(int);  // 删除槽位
     callback set-project-type(string);  // 设置图片种类
     callback clear-status();  // 清除状态消息
+    callback clear-all-priced(int);  // 清除所有已标价图片
     
     // 输入价位函数
     input-code(code) => {
@@ -456,6 +465,7 @@ export component PricingCategoryItem inherits Rectangle {
     in-out property <bool> expanded: false;
     in-out property <[string]> images: [];
     in-out property <bool> is-selected: false;
+    in-out property <int> selected-image-index: -1;
 
     callback toggle-clicked();
     callback image-clicked(int);
@@ -518,8 +528,10 @@ export component PricingCategoryItem inherits Rectangle {
 
             for image[i] in images: Rectangle {
                 height: 20px;
-                background: image-touch.has-hover ? #e8e8e8 : transparent;
+                background: i == selected-image-index ? #bbdefb : image-touch.has-hover ? #e8e8e8 : transparent;
                 border-radius: 2px;
+                border-width: i == selected-image-index ? 1px : 0px;
+                border-color: i == selected-image-index ? #1976D2 : transparent;
 
                 image-touch := TouchArea {
                     clicked => { root.image-clicked(i); }
@@ -528,7 +540,8 @@ export component PricingCategoryItem inherits Rectangle {
                 Text {
                     text: image;
                     font-size: 9px;
-                    color: #555;
+                    color: i == selected-image-index ? #1976D2 : #555;
+                    font-weight: i == selected-image-index ? 600 : 400;
                     vertical-alignment: center;
                     overflow: elide;
                 }
@@ -727,6 +740,7 @@ export component PricingPage inherits Rectangle {
                                     expanded: category.expanded;
                                     images: category.images;
                                     is-selected: ManagePageAdapter.selected-category == i;
+                                    selected-image-index: ManagePageAdapter.current-category-index == i ? ManagePageAdapter.current-image-index : -1;
 
                                     toggle-clicked => {
                                         ManagePageAdapter.toggle-category(i);
@@ -879,6 +893,18 @@ export component PricingPage inherits Rectangle {
                 clicked => {
                     if PricingPageAdapter.current-image-path != "" {
                         PricingPageAdapter.skip-image(PricingPageAdapter.plan-id, PricingPageAdapter.current-image-path);
+                    }
+                }
+            }
+
+            Rectangle { horizontal-stretch: 1; background: transparent; }
+
+            Button {
+                text: "清除所有已标价";
+                width: 100px;
+                clicked => {
+                    if PricingPageAdapter.plan-id > 0 {
+                        PricingPageAdapter.clear-all-priced(PricingPageAdapter.plan-id);
                     }
                 }
             }
@@ -1047,6 +1073,7 @@ export component ManagePage inherits Rectangle {
                                     expanded: category.expanded;
                                     images: category.images;
                                     is-selected: ManagePageAdapter.selected-category == i;
+                                    selected-image-index: ManagePageAdapter.current-category-index == i ? ManagePageAdapter.current-image-index : -1;
 
                                     toggle-clicked => {
                                         ManagePageAdapter.toggle-category(i);

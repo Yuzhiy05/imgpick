@@ -706,3 +706,157 @@ assert!(plan_dir.join("src").exists());
 assert!(plan_dir.join("pend").exists());
 assert!(plan_dir.join("proc").exists());
 ```
+
+---
+
+## 33. 前一张/后一张按钮图片不更新
+
+**问题描述**: 点击"上一张/下一张"按钮时，展开栏中的高亮位置正确移动，但实际显示的图片没有变化。
+
+**原因**: `on_next_image` 和 `on_prev_image` 回调中，`images` 列表只包含文件名（如 "image1.jpg"），而不是完整路径，导致 `slint::Image::load_from_path()` 加载失败。
+
+**解决方案**: 修改 `on_next_image` 和 `on_prev_image` 回调，使用完整路径来加载图片。
+
+```rust
+// 错误：直接使用文件名加载
+if let Some(path) = images.iter().nth(next_index as usize) {
+    let path_str = path.to_string();
+    let image_path = std::path::Path::new(path_str.as_str());
+    if let Ok(image) = slint::Image::load_from_path(image_path) {
+        app.global::<ui::PricingPageAdapter>().set_current_image(image);
+    }
+}
+
+// 正确：构建完整路径后加载
+if let Some(file_name) = images.iter().nth(next_index as usize) {
+    let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
+    let cat_index = app.global::<ui::ManagePageAdapter>().get_current_category_index();
+    let categories = app.global::<ui::ManagePageAdapter>().get_categories();
+    
+    if let Some(category) = categories.iter().nth(cat_index as usize) {
+        let cat_name = category.name.to_string();
+        let full_path = base_dir.join("plans").join(&plan_name).join(&cat_name).join(file_name.as_str());
+        
+        if let Ok(image) = slint::Image::load_from_path(&full_path) {
+            app.global::<ui::PricingPageAdapter>().set_current_image(image);
+        }
+    }
+}
+```
+
+**关键点**:
+1. `images` 列表存储的是文件名，不是完整路径
+2. 完整路径格式：`base_dir/plans/{plan_name}/{category_name}/{file_name}`
+3. 需要从 `ManagePageAdapter` 获取当前计划名和分类索引来构建路径
+
+---
+
+## 34. 清除所有已标价图片功能
+
+**问题描述**: 需要添加一个按钮，能够一次性删除该计划下所有已标价图片的数据库记录和文件。
+
+**解决方案**: 
+1. 在UI中添加"清除所有已标价"按钮
+2. 在Rust端实现完整的删除逻辑
+
+**实现细节**:
+
+### 1. UI层（app.slint）
+```slint
+// 在PricingPageAdapter中添加回调
+callback clear-all-priced(int);  // 清除所有已标价图片
+
+// 在PricingPage中添加按钮
+Button {
+    text: "清除所有已标价";
+    width: 100px;
+    clicked => {
+        if PricingPageAdapter.plan-id > 0 {
+            PricingPageAdapter.clear-all-priced(PricingPageAdapter.plan-id);
+        }
+    }
+}
+```
+
+### 2. 数据库层（operations.rs）
+```rust
+pub fn delete_images_by_category(&self, plan_id: i64, category: ImageCategory) -> Result<usize> {
+    self.conn.execute(
+        "DELETE FROM images WHERE plan_id = ?1 AND category = ?2",
+        params![plan_id, category.as_str()],
+    )
+}
+```
+
+### 3. 图片管理器（image_manager.rs）
+```rust
+pub fn clear_priced_images(&self, plan_id: i64) -> Result<usize, String> {
+    let plan = self.db.get_plan(plan_id)
+        .map_err(|e| format!("获取计划失败: {}", e))?
+        .ok_or_else(|| "计划未找到".to_string())?;
+
+    // 获取所有已标价图片
+    let priced_images = self.db.get_images_by_category(plan_id, ImageCategory::Priced)
+        .map_err(|e| format!("获取已标价图片失败: {}", e))?;
+
+    let count = priced_images.len();
+
+    // 删除文件系统中的图片文件
+    let priced_dir = self.plan_category_dir(&plan.name, "priced");
+    if priced_dir.exists() {
+        for entry in std::fs::read_dir(&priced_dir)
+            .map_err(|e| format!("读取已标价目录失败: {}", e))?
+            .flatten()
+        {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(ext) = path.extension() {
+                    let ext_str = ext.to_string_lossy().to_lowercase();
+                    if ["jpg", "jpeg", "png", "gif", "bmp", "webp"].contains(&ext_str.as_str()) {
+                        let _ = std::fs::remove_file(&path);
+                    }
+                }
+            }
+        }
+    }
+
+    // 删除数据库中的记录
+    self.db.delete_images_by_category(plan_id, ImageCategory::Priced)
+        .map_err(|e| format!("删除数据库记录失败: {}", e))?;
+
+    Ok(count)
+}
+```
+
+### 4. 回调层（main.rs）
+```rust
+app.global::<ui::PricingPageAdapter>().on_clear_all_priced(move |plan_id| {
+    if let Some(app) = weak_clone.upgrade() {
+        let image_manager = image_manager::ImageManager::new(db_clone.clone(), base_dir_clone.clone());
+        match image_manager.clear_priced_images(plan_id as i64) {
+            Ok(count) => {
+                app.global::<ui::PricingPageAdapter>().set_status_message(
+                    format!("已清除 {} 张已标价图片", count).into()
+                );
+                // 刷新分类和进度
+                if let Ok(Some(plan)) = db_clone.get_plan(plan_id as i64) {
+                    let cats = load_categories_for_plan(&base_dir_clone, &plan.name);
+                    update_pricing_progress(&app, &cats);
+                    categories_model_clone.set_vec(cats);
+                }
+            }
+            Err(e) => {
+                app.global::<ui::PricingPageAdapter>().set_status_message(
+                    format!("清除失败: {}", e).into()
+                );
+            }
+        }
+    }
+});
+```
+
+**关键点**:
+1. 需要同时删除数据库记录和文件系统中的文件
+2. 只删除图片文件（jpg, jpeg, png, gif, bmp, webp），不影响其他文件
+3. 删除后需要刷新分类和进度显示
+4. 使用 `format!` 宏生成状态消息

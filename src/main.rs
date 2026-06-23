@@ -210,6 +210,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     app.set_current_plan_name("".into());
                     app.global::<ui::PricingPageAdapter>().set_plan_id(0);
                     categories_model_clone.set_vec(vec![]);
+                    app.global::<ui::ManagePageAdapter>().set_current_image_index(-1);
+                    app.global::<ui::ManagePageAdapter>().set_current_category_index(-1);
                     refresh_plans(&db, &plans_model_clone);
                 }
             }
@@ -248,6 +250,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     categories_model_clone.set_vec(cats);
                     app.global::<ui::ManagePageAdapter>().set_selected_category(-1);
                     app.global::<ui::ManagePageAdapter>().set_selected_image(-1);
+                    app.global::<ui::ManagePageAdapter>().set_current_image_index(-1);
+                    app.global::<ui::ManagePageAdapter>().set_current_category_index(-1);
                     app.global::<ui::ManagePageAdapter>().set_current_images(Vec::<slint::SharedString>::new().as_slice().into());
                 }
             }
@@ -263,6 +267,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     categories_model_clone.set_vec(vec![]);
                     app.global::<ui::ManagePageAdapter>().set_selected_category(-1);
                     app.global::<ui::ManagePageAdapter>().set_selected_image(-1);
+                    app.global::<ui::ManagePageAdapter>().set_current_image_index(-1);
+                    app.global::<ui::ManagePageAdapter>().set_current_category_index(-1);
                     app.global::<ui::ManagePageAdapter>().set_current_images(Vec::<slint::SharedString>::new().as_slice().into());
                 }
             }
@@ -358,6 +364,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // 下一张图片回调
     let weak_clone = weak.clone();
+    let base_dir_clone = base_dir.clone();
     app.global::<ui::PricingPageAdapter>().on_next_image(move || {
         if let Some(app) = weak_clone.upgrade() {
             let images = app.global::<ui::PricingPageAdapter>().get_images();
@@ -366,14 +373,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             if next_index < images.iter().count() as i32 {
                 app.global::<ui::PricingPageAdapter>().set_current_image_index(next_index);
-                if let Some(path) = images.iter().nth(next_index as usize) {
-                    app.global::<ui::PricingPageAdapter>().set_current_image_path(path.clone());
+                
+                // 更新ManagePageAdapter的高亮索引
+                app.global::<ui::ManagePageAdapter>().set_current_image_index(next_index);
+                
+                if let Some(file_name) = images.iter().nth(next_index as usize) {
+                    // 构建完整路径
+                    let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
+                    let cat_index = app.global::<ui::ManagePageAdapter>().get_current_category_index();
+                    let categories = app.global::<ui::ManagePageAdapter>().get_categories();
                     
-                    // 加载图片
-                    let path_str = path.to_string();
-                    let image_path = std::path::Path::new(path_str.as_str());
-                    if let Ok(image) = slint::Image::load_from_path(image_path) {
-                        app.global::<ui::PricingPageAdapter>().set_current_image(image);
+                    if let Some(category) = categories.iter().nth(cat_index as usize) {
+                        let cat_name = category.name.to_string();
+                        let full_path = base_dir_clone.join("plans").join(&plan_name).join(&cat_name).join(file_name.as_str());
+                        let path_str = full_path.display().to_string();
+                        
+                        app.global::<ui::PricingPageAdapter>().set_current_image_path(path_str.clone().into());
+                        
+                        // 加载图片
+                        if let Ok(image) = slint::Image::load_from_path(&full_path) {
+                            app.global::<ui::PricingPageAdapter>().set_current_image(image);
+                        } else {
+                            eprintln!("Failed to load image: {}", full_path.display());
+                        }
                     }
                 }
                 // 清空槽位
@@ -384,6 +406,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // 上一张图片回调
     let weak_clone = weak.clone();
+    let base_dir_clone = base_dir.clone();
     app.global::<ui::PricingPageAdapter>().on_prev_image(move || {
         if let Some(app) = weak_clone.upgrade() {
             let current_index = app.global::<ui::PricingPageAdapter>().get_current_image_index();
@@ -391,15 +414,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             if prev_index >= 0 {
                 app.global::<ui::PricingPageAdapter>().set_current_image_index(prev_index);
+                
+                // 更新ManagePageAdapter的高亮索引
+                app.global::<ui::ManagePageAdapter>().set_current_image_index(prev_index);
+                
                 let images = app.global::<ui::PricingPageAdapter>().get_images();
-                if let Some(path) = images.iter().nth(prev_index as usize) {
-                    app.global::<ui::PricingPageAdapter>().set_current_image_path(path.clone());
+                if let Some(file_name) = images.iter().nth(prev_index as usize) {
+                    // 构建完整路径
+                    let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
+                    let cat_index = app.global::<ui::ManagePageAdapter>().get_current_category_index();
+                    let categories = app.global::<ui::ManagePageAdapter>().get_categories();
                     
-                    // 加载图片
-                    let path_str = path.to_string();
-                    let image_path = std::path::Path::new(path_str.as_str());
-                    if let Ok(image) = slint::Image::load_from_path(image_path) {
-                        app.global::<ui::PricingPageAdapter>().set_current_image(image);
+                    if let Some(category) = categories.iter().nth(cat_index as usize) {
+                        let cat_name = category.name.to_string();
+                        let full_path = base_dir_clone.join("plans").join(&plan_name).join(&cat_name).join(file_name.as_str());
+                        let path_str = full_path.display().to_string();
+                        
+                        app.global::<ui::PricingPageAdapter>().set_current_image_path(path_str.clone().into());
+                        
+                        // 加载图片
+                        if let Ok(image) = slint::Image::load_from_path(&full_path) {
+                            app.global::<ui::PricingPageAdapter>().set_current_image(image);
+                        } else {
+                            eprintln!("Failed to load image: {}", full_path.display());
+                        }
                     }
                 }
                 // 清空槽位
@@ -434,6 +472,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let cats = load_categories_for_plan(&base_dir_clone, &plan.name);
                         update_pricing_progress(&app, &cats);
                         categories_model_clone.set_vec(cats);
+                        
+                        // 重置高亮索引
+                        app.global::<ui::ManagePageAdapter>().set_current_image_index(-1);
+                        app.global::<ui::ManagePageAdapter>().set_current_category_index(-1);
                     }
                 }
                 Err(e) => eprintln!("Failed to save pricing: {}", e),
@@ -461,6 +503,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let cats = load_categories_for_plan(&base_dir_clone, &plan.name);
                         update_pricing_progress(&app, &cats);
                         categories_model_clone.set_vec(cats);
+                        
+                        // 重置高亮索引
+                        app.global::<ui::ManagePageAdapter>().set_current_image_index(-1);
+                        app.global::<ui::ManagePageAdapter>().set_current_category_index(-1);
                     }
                 }
                 Err(e) => eprintln!("Failed to skip image: {}", e),
@@ -482,6 +528,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     app.global::<ui::PricingPageAdapter>().on_clear_status(move || {
         if let Some(app) = weak_clone.upgrade() {
             app.global::<ui::PricingPageAdapter>().set_status_message("".into());
+        }
+    });
+    
+    // 清除所有已标价图片回调
+    let weak_clone = weak.clone();
+    let db_clone = db.clone();
+    let base_dir_clone = base_dir.clone();
+    let categories_model_clone = categories_model.clone();
+    app.global::<ui::PricingPageAdapter>().on_clear_all_priced(move |plan_id| {
+        if let Some(app) = weak_clone.upgrade() {
+            println!("Clear all priced images for plan: {}", plan_id);
+            
+            let image_manager = image_manager::ImageManager::new(db_clone.clone(), base_dir_clone.clone());
+            match image_manager.clear_priced_images(plan_id as i64) {
+                Ok(count) => {
+                    println!("Cleared {} priced images", count);
+                    app.global::<ui::PricingPageAdapter>().set_status_message(format!("已清除 {} 张已标价图片", count).into());
+                    
+                    // 刷新分类和进度
+                    if let Ok(Some(plan)) = db_clone.get_plan(plan_id as i64) {
+                        let cats = load_categories_for_plan(&base_dir_clone, &plan.name);
+                        update_pricing_progress(&app, &cats);
+                        categories_model_clone.set_vec(cats);
+                        
+                        // 重置高亮索引
+                        app.global::<ui::ManagePageAdapter>().set_current_image_index(-1);
+                        app.global::<ui::ManagePageAdapter>().set_current_category_index(-1);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to clear priced images: {}", e);
+                    app.global::<ui::PricingPageAdapter>().set_status_message(format!("清除失败: {}", e).into());
+                }
+            }
         }
     });
     
@@ -527,6 +607,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     app.global::<ui::ManagePageAdapter>().on_select_image(move |index| {
         if let Some(app) = weak_clone.upgrade() {
             app.global::<ui::ManagePageAdapter>().set_selected_image(index);
+            app.global::<ui::ManagePageAdapter>().set_current_image_index(index);
             
             let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
             if plan_name.is_empty() { return; }
@@ -535,6 +616,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             let categories = app.global::<ui::ManagePageAdapter>().get_categories();
             let cat_index = app.global::<ui::ManagePageAdapter>().get_selected_category();
+            app.global::<ui::ManagePageAdapter>().set_current_category_index(cat_index);
             
             if let Some(category) = categories.iter().nth(cat_index as usize) {
                 let images: Vec<slint::SharedString> = category.images.iter().collect();
@@ -554,6 +636,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Ok(img) => {
                             app.global::<ui::PricingPageAdapter>().set_current_image_path(path_str.into());
                             app.global::<ui::PricingPageAdapter>().set_current_image(img);
+                            app.global::<ui::PricingPageAdapter>().set_current_image_index(index);
+                            
+                            // 更新PricingPage的images列表为当前展开栏中的图片列表
+                            let pricing_images: Vec<slint::SharedString> = category.images.iter().collect();
+                            app.global::<ui::PricingPageAdapter>().set_images(pricing_images.as_slice().into());
+                            
                             if cat_name == "pend" {
                                 app.global::<ui::PricingPageAdapter>().invoke_clear_slots();
                             }

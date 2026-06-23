@@ -391,6 +391,43 @@ impl ImageManager {
 
         Ok(())
     }
+
+    pub fn clear_priced_images(&self, plan_id: i64) -> Result<usize, String> {
+        let plan = self.db.get_plan(plan_id)
+            .map_err(|e| format!("获取计划失败: {}", e))?
+            .ok_or_else(|| "计划未找到".to_string())?;
+
+        // 获取所有已标价图片
+        let priced_images = self.db.get_images_by_category(plan_id, ImageCategory::Priced)
+            .map_err(|e| format!("获取已标价图片失败: {}", e))?;
+
+        let count = priced_images.len();
+
+        // 删除文件系统中的图片文件
+        let priced_dir = self.plan_category_dir(&plan.name, "priced");
+        if priced_dir.exists() {
+            for entry in std::fs::read_dir(&priced_dir)
+                .map_err(|e| format!("读取已标价目录失败: {}", e))?
+                .flatten()
+            {
+                let path = entry.path();
+                if path.is_file() {
+                    if let Some(ext) = path.extension() {
+                        let ext_str = ext.to_string_lossy().to_lowercase();
+                        if ["jpg", "jpeg", "png", "gif", "bmp", "webp"].contains(&ext_str.as_str()) {
+                            let _ = std::fs::remove_file(&path);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 删除数据库中的记录
+        self.db.delete_images_by_category(plan_id, ImageCategory::Priced)
+            .map_err(|e| format!("删除数据库记录失败: {}", e))?;
+
+        Ok(count)
+    }
 }
 
 #[cfg(test)]

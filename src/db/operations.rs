@@ -271,6 +271,13 @@ impl Database {
         self.conn.execute("DELETE FROM images WHERE id = ?1", params![id])
     }
 
+    pub fn delete_images_by_category(&self, plan_id: i64, category: ImageCategory) -> Result<usize> {
+        self.conn.execute(
+            "DELETE FROM images WHERE plan_id = ?1 AND category = ?2",
+            params![plan_id, category.as_str()],
+        )
+    }
+
     // Excel data operations
     pub fn create_excel_data(&self, plan_id: i64, sample_id: &str, data_json: &str) -> Result<i64> {
         self.conn.execute(
