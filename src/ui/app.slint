@@ -99,6 +99,125 @@ export global PlanPageAdapter {
     callback select-plan(int);
 }
 
+// 图片分类数据结构
+export struct ImageCategoryData {
+    name: string,
+    display-name: string,
+    count: int,
+    expanded: bool,
+    images: [string],
+}
+
+// 图片分类项组件（可展开）
+export component ImageCategoryItem inherits Rectangle {
+    in-out property <string> category-name: "";
+    in-out property <string> display-name: "";
+    in-out property <int> image-count: 0;
+    in-out property <bool> expanded: false;
+    in-out property <[string]> images: [];
+    in-out property <bool> is-selected: false;
+    
+    callback toggle-clicked();
+    callback image-clicked(int);
+    
+    height: expanded ? (30px + images.length * 24px) : 30px;
+    background: is-selected ? #e3f2fd : #fafafa;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: #e0e0e0;
+    
+    VerticalLayout {
+        padding: 0;
+        spacing: 0;
+        
+        // 分类标题栏
+        Rectangle {
+            height: 30px;
+            background: header-touch.has-hover ? #f0f0f0 : transparent;
+            
+            header-touch := TouchArea {
+                clicked => {
+                    root.toggle-clicked();
+                }
+            }
+            
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+                spacing: 4px;
+                
+                Text {
+                    text: expanded ? "▼" : "▶";
+                    font-size: 10px;
+                    color: #666;
+                    vertical-alignment: center;
+                    width: 12px;
+                }
+                
+                Text {
+                    text: display-name;
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: #333;
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
+                }
+                
+                Text {
+                    text: "(" + image-count + ")";
+                    font-size: 11px;
+                    color: #999;
+                    vertical-alignment: center;
+                }
+            }
+        }
+        
+        // 图片列表（展开时显示）
+        if expanded && images.length > 0: VerticalLayout {
+            padding-left: 24px;
+            padding-right: 8px;
+            padding-bottom: 4px;
+            spacing: 2px;
+            
+            for image[i] in images: Rectangle {
+                height: 22px;
+                background: image-touch.has-hover ? #e8e8e8 : transparent;
+                border-radius: 2px;
+                
+                image-touch := TouchArea {
+                    clicked => {
+                        root.image-clicked(i);
+                    }
+                }
+                
+                Text {
+                    text: image;
+                    font-size: 11px;
+                    color: #555;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+}
+
+// 图片管理页面适配器（全局单例）
+export global ManagePageAdapter {
+    in-out property <[ImageCategoryData]> categories: [];
+    in-out property <[string]> current-images: [];
+    in-out property <int> selected-category: -1;
+    in-out property <int> selected-image: -1;
+    in-out property <string> selected-image-path: "";
+    in-out property <image> selected-image-data;
+    in-out property <string> plan-name: "";
+    
+    callback load-categories(int);
+    callback toggle-category(int);
+    callback select-category(int);
+    callback select-image(int);
+}
+
 // 计划管理页面
 export component PlanPage inherits Rectangle {
     in-out property <int> plan-id: 0;
@@ -204,6 +323,7 @@ export component PlanPage inherits Rectangle {
 
 // 图片标价页面适配器（全局单例）
 export global PricingPageAdapter {
+    in-out property <int> plan-id: 0;
     in-out property <[string]> folders: [];
     in-out property <int> selected-folder: -1;
     in-out property <[string]> images: [];  // 当前文件夹的图片路径列表
@@ -230,7 +350,8 @@ export global PricingPageAdapter {
     callback load-images(int);  // 加载指定文件夹的图片
     callback next-image();
     callback prev-image();
-    callback confirm-pricing(string, string, string, string);  // 确认标价：图片名、图片路径、标价、种类
+    callback confirm-pricing(int, string, string, string, string);  // 确认标价：plan-id、图片名、路径、价位、种类
+    callback skip-image(int, string);  // 跳过：plan-id、图片路径
     callback clear-slots();  // 清空所有槽位
     callback input-code(string);  // 输入价位
     callback focus-slot(int);  // 聚焦槽位
@@ -554,11 +675,9 @@ export component PricingPage inherits Rectangle {
                 text: "确认标价";
                 width: 80px;
                 clicked => {
-                    // 获取标价
                     let price = PricingPageAdapter.slot1 + PricingPageAdapter.slot2 + PricingPageAdapter.slot3 + PricingPageAdapter.slot4 + PricingPageAdapter.slot5 + PricingPageAdapter.slot6 + PricingPageAdapter.slot7 + PricingPageAdapter.slot8;
                     if price != "" && PricingPageAdapter.current-image-path != "" && PricingPageAdapter.project-type != "" {
-                        // 直接使用路径作为文件名（后续在Rust端处理）
-                        PricingPageAdapter.confirm-pricing(PricingPageAdapter.current-image-path, PricingPageAdapter.current-image-path, price, PricingPageAdapter.project-type);
+                        PricingPageAdapter.confirm-pricing(PricingPageAdapter.plan-id, PricingPageAdapter.current-image-path, PricingPageAdapter.current-image-path, price, PricingPageAdapter.project-type);
                     }
                 }
             }
@@ -578,56 +697,141 @@ export component PricingPage inherits Rectangle {
             Button {
                 text: "跳过";
                 width: 60px;
+                clicked => {
+                    if PricingPageAdapter.current-image-path != "" {
+                        PricingPageAdapter.skip-image(PricingPageAdapter.plan-id, PricingPageAdapter.current-image-path);
+                    }
+                }
             }
         }
     }
 }
 
 // 图片管理页面
-export component ManagePage inherits VerticalBox {
+export component ManagePage inherits Rectangle {
     in-out property <int> plan-id: 0;
+    in-out property <string> plan-name: "";
 
-    Text {
-        text: "图片管理";
-        font-size: 18px;
-        font-weight: 700;
-        color: #1976D2;
-    }
-
-    HorizontalLayout {
+    VerticalLayout {
+        padding: 12px;
         spacing: 8px;
 
-        Button {
-            text: "图片源";
-            width: 70px;
-        }
-
-        Button {
-            text: "待标价";
-            width: 70px;
-        }
-
-        Button {
-            text: "已标价";
-            width: 70px;
-        }
-
-        Button {
-            text: "待处理";
-            width: 70px;
-        }
-    }
-
-    Rectangle {
-        vertical-stretch: 1;
-        background: #f0f0f0;
-        border-radius: 4px;
-
         Text {
-            text: "图片列表区域";
-            horizontal-alignment: center;
-            vertical-alignment: center;
-            color: #999;
+            text: "图片管理";
+            font-size: 18px;
+            font-weight: 700;
+            color: #1976D2;
+            height: 28px;
+        }
+
+        // 图片显示区域 + 图片文件集合
+        Rectangle {
+            vertical-stretch: 1;
+            background: #f0f0f0;
+            border-radius: 4px;
+            clip: true;
+
+            HorizontalLayout {
+                spacing: 12px;
+
+                // 图片显示区域 (70%)
+                Rectangle {
+                    horizontal-stretch: 7;
+                    background: white;
+                    border-radius: 4px;
+                    border-width: 1px;
+                    border-color: #e0e0e0;
+
+                    VerticalLayout {
+                        padding: 8px;
+                        spacing: 4px;
+
+                        Text {
+                            text: ManagePageAdapter.selected-image-path != "" ? "当前图片: " + ManagePageAdapter.selected-image-path : "图片显示区域";
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: #666;
+                            height: 20px;
+                        }
+
+                        Rectangle {
+                            vertical-stretch: 1;
+                            background: #fafafa;
+                            border-radius: 4px;
+
+                            if ManagePageAdapter.selected-image-path == "": Text {
+                                text: "点击右侧图片名查看";
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                color: #999;
+                            }
+
+                            if ManagePageAdapter.selected-image-path != "": Image {
+                                source: ManagePageAdapter.selected-image-data;
+                                image-fit: contain;
+                                width: 100%;
+                                height: 100%;
+                            }
+                        }
+                    }
+                }
+
+                // 图片文件集合面板 (30%)
+                Rectangle {
+                    horizontal-stretch: 3;
+                    background: white;
+                    border-radius: 4px;
+                    border-width: 1px;
+                    border-color: #e0e0e0;
+
+                    VerticalLayout {
+                        padding: 8px;
+                        spacing: 4px;
+
+                        Text {
+                            text: "图片文件集合";
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: #666;
+                            height: 20px;
+                        }
+
+                        Rectangle {
+                            vertical-stretch: 1;
+                            background: #fafafa;
+                            border-radius: 4px;
+                            clip: true;
+
+                            if ManagePageAdapter.categories.length == 0: Text {
+                                text: "暂无数据";
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                color: #999;
+                            }
+
+                            if ManagePageAdapter.categories.length > 0: VerticalLayout {
+                                for category[i] in ManagePageAdapter.categories: ImageCategoryItem {
+                                    category-name: category.name;
+                                    display-name: category.display-name;
+                                    image-count: category.count;
+                                    expanded: category.expanded;
+                                    images: category.images;
+                                    is-selected: ManagePageAdapter.selected-category == i;
+
+                                    toggle-clicked => {
+                                        ManagePageAdapter.toggle-category(i);
+                                    }
+
+                                    image-clicked(idx) => {
+                                        ManagePageAdapter.select-category(i);
+                                        ManagePageAdapter.select-image(idx);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -923,6 +1127,7 @@ export component App inherits Window {
                 }
                 if current-page == "manage": ManagePage {
                     plan-id <=> current-plan-id;
+                    plan-name <=> current-plan-name;
                 }
                 if current-page == "excel": ExcelPage {
                     plan-id <=> current-plan-id;

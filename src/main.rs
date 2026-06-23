@@ -13,10 +13,12 @@ mod excel_manager;
 
 use db::Database;
 use models::plan::Plan;
+use models::image::ImageCategory;
 use rusqlite::Connection;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::rc::Rc;
+use std::collections::HashMap;
 use slint::ComponentHandle;
 use slint::{VecModel, LogicalSize, Model};
 
@@ -42,6 +44,56 @@ fn refresh_plans(db: &Database, model: &VecModel<ui::PlanData>) {
     model.set_vec(plans);
 }
 
+fn scan_folder_images(folder_path: &Path) -> Vec<String> {
+    let mut images = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(folder_path) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(ext) = path.extension() {
+                    let ext_str = ext.to_string_lossy().to_lowercase();
+                    if ["jpg", "jpeg", "png", "gif", "bmp", "webp"].contains(&ext_str.as_str()) {
+                        if let Some(name) = path.file_name() {
+                            images.push(name.to_string_lossy().to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    images.sort();
+    images
+}
+
+fn load_categories_for_plan(base_dir: &Path, plan_name: &str) -> Vec<ui::ImageCategoryData> {
+    let plan_dir = base_dir.join("plans").join(plan_name);
+    let categories = vec![
+        ("src", "图片源"),
+        ("pend", "待标价"),
+        ("priced", "已标价"),
+        ("proc", "待处理"),
+    ];
+    
+    let mut result = Vec::new();
+    for (folder_name, display_name) in categories {
+        let folder_path = plan_dir.join(folder_name);
+        let images = if folder_path.exists() {
+            scan_folder_images(&folder_path)
+        } else {
+            Vec::new()
+        };
+        let count = images.len();
+        result.push(ui::ImageCategoryData {
+            name: folder_name.into(),
+            display_name: display_name.into(),
+            count: count as i32,
+            expanded: false,
+            images: images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+        });
+    }
+    result
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize database
     let conn = Connection::open("imgpick.db")?;
@@ -49,7 +101,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db = Arc::new(Database::new(conn));
     
     // Create managers
-    let plan_manager = plan_manager::PlanManager::new(db.clone());
+    let base_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let plan_manager = plan_manager::PlanManager::new(db.clone(), base_dir.clone());
     
     // Create and run UI
     let app = ui::App::new()?;
@@ -68,19 +121,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load initial plans (使用共享VecModel，避免替换整个模型导致崩溃)
     let plans_model = create_plans_model(&db);
     app.global::<ui::PlanPageAdapter>().set_plans(plans_model.clone().into());
+
+    // 共享的分类模型（和plans一样用共享VecModel避免替换崩溃）
+    let categories_model: Rc<VecModel<ui::ImageCategoryData>> = Rc::new(VecModel::default());
+    app.global::<ui::ManagePageAdapter>().set_categories(categories_model.clone().into());
     
     // Set up callbacks
-    let db_clone = db.clone();
-    let weak_clone = weak.clone();
+    let plan_manager_clone = plan_manager.clone();
     let plans_model_clone = plans_model.clone();
     app.global::<ui::PlanPageAdapter>().on_create_plan(move |name| {
         let name_str = name.to_string();
         if !name_str.is_empty() {
-            let db = db_clone.clone();
-            match db.create_plan(&name_str) {
-                Ok(id) => {
-                    println!("Created plan: {} with id: {}", name_str, id);
-                    refresh_plans(&db, &plans_model_clone);
+            match plan_manager_clone.create_plan(&name_str) {
+                Ok(plan) => {
+                    println!("Created plan: {} with id: {}", plan.name, plan.id);
+                    refresh_plans(&plan_manager_clone.db, &plans_model_clone);
                 }
                 Err(e) => eprintln!("Failed to create plan: {}", e),
             }
@@ -90,6 +145,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db_clone = db.clone();
     let weak_clone = weak.clone();
     let plans_model_clone = plans_model.clone();
+    let categories_model_clone = categories_model.clone();
     app.global::<ui::PlanPageAdapter>().on_delete_plan(move |id| {
         let db = db_clone.clone();
         match db.delete_plan(id as i64) {
@@ -98,6 +154,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Some(app) = weak_clone.upgrade() {
                     app.set_current_plan_id(0);
                     app.set_current_plan_name("".into());
+                    app.global::<ui::PricingPageAdapter>().set_plan_id(0);
+                    categories_model_clone.set_vec(vec![]);
                     refresh_plans(&db, &plans_model_clone);
                 }
             }
@@ -118,19 +176,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     let db_clone = db.clone();
     let weak_clone = weak.clone();
+    let base_dir_clone = base_dir.clone();
+    let categories_model_clone = categories_model.clone();
     app.global::<ui::PlanPageAdapter>().on_select_plan(move |id| {
         let db = db_clone.clone();
         match db.get_plan(id as i64) {
             Ok(Some(plan)) => {
                 if let Some(app) = weak_clone.upgrade() {
                     app.set_current_plan_id(id);
-                    app.set_current_plan_name(plan.name.into());
+                    app.set_current_plan_name(plan.name.clone().into());
+                    app.global::<ui::PricingPageAdapter>().set_plan_id(id);
+                    app.global::<ui::ManagePageAdapter>().set_plan_name(plan.name.clone().into());
+                    
+                    let cats = load_categories_for_plan(&base_dir_clone, &plan.name);
+                    categories_model_clone.set_vec(cats);
+                    app.global::<ui::ManagePageAdapter>().set_selected_category(-1);
+                    app.global::<ui::ManagePageAdapter>().set_selected_image(-1);
+                    app.global::<ui::ManagePageAdapter>().set_current_images(Vec::<slint::SharedString>::new().as_slice().into());
                 }
             }
             Ok(None) => {
                 if let Some(app) = weak_clone.upgrade() {
                     app.set_current_plan_id(0);
                     app.set_current_plan_name("".into());
+                    app.global::<ui::PricingPageAdapter>().set_plan_id(0);
+                    
+                    categories_model_clone.set_vec(vec![]);
+                    app.global::<ui::ManagePageAdapter>().set_selected_category(-1);
+                    app.global::<ui::ManagePageAdapter>().set_selected_image(-1);
+                    app.global::<ui::ManagePageAdapter>().set_current_images(Vec::<slint::SharedString>::new().as_slice().into());
                 }
             }
             Err(e) => eprintln!("Failed to get plan: {}", e),
@@ -192,12 +266,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let display = folder_display.to_string();
                 // display 是 "parent/folder" 格式，提取 folder 名
                 let folder_name = display.split('/').last().unwrap_or(&display);
-                // 拼接完整路径：prefix + "/" + folder_name
-                let full_path = format!("{}/{}", prefix, folder_name);
-                let path = std::path::PathBuf::from(&full_path);
+                let path = std::path::Path::new(&prefix).join(folder_name);
                 let image_files = image_manager::ImageManager::get_image_files_from_folder(&path);
                 
-                println!("Found {} images in folder {}", image_files.len(), full_path);
+                println!("Found {} images in folder {}", image_files.len(), path.display());
                 let images: Vec<slint::SharedString> = image_files.into_iter().map(|s| s.into()).collect();
                 app.global::<ui::PricingPageAdapter>().set_images(images.as_slice().into());
                 
@@ -272,22 +344,53 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 确认标价回调
     let weak_clone = weak.clone();
     let db_clone = db.clone();
-    app.global::<ui::PricingPageAdapter>().on_confirm_pricing(move |filename, path, price, project_type| {
-        if let Some(_app) = weak_clone.upgrade() {
-            // 转换种类：blood->Abo, antibody->AS, crossmatch->CM
+    let base_dir_clone = base_dir.clone();
+    let categories_model_clone = categories_model.clone();
+    app.global::<ui::PricingPageAdapter>().on_confirm_pricing(move |plan_id, filename, path, price, project_type| {
+        if let Some(app) = weak_clone.upgrade() {
             let db_type = match project_type.as_str() {
                 "blood" => "Abo",
                 "antibody" => "AS",
                 "crossmatch" => "CM",
                 _ => "",
             };
-            println!("Confirm pricing: {} - {} - {} - {}", filename, path, price, db_type);
+            println!("Confirm pricing: plan={} file={} price={} type={}", plan_id, filename, price, db_type);
             
-            // 保存到数据库
-            let image_manager = image_manager::ImageManager::new(db_clone.clone(), std::path::PathBuf::from("."));
-            match image_manager.save_pricing(&filename.to_string(), &path.to_string(), &price.to_string()) {
-                Ok(_) => println!("Pricing saved successfully"),
+            let image_manager = image_manager::ImageManager::new(db_clone.clone(), base_dir_clone.clone());
+            match image_manager.save_priced(plan_id as i64, &path.to_string(), &price.to_string(), &price.to_string(), db_type) {
+                Ok(id) => {
+                    println!("Priced image saved, id={}", id);
+                    app.global::<ui::PricingPageAdapter>().invoke_clear_slots();
+                    
+                    if let Ok(Some(plan)) = db_clone.get_plan(plan_id as i64) {
+                        categories_model_clone.set_vec(load_categories_for_plan(&base_dir_clone, &plan.name));
+                    }
+                }
                 Err(e) => eprintln!("Failed to save pricing: {}", e),
+            }
+        }
+    });
+    
+    // 跳过图片回调
+    let weak_clone = weak.clone();
+    let db_clone = db.clone();
+    let base_dir_clone = base_dir.clone();
+    let categories_model_clone = categories_model.clone();
+    app.global::<ui::PricingPageAdapter>().on_skip_image(move |plan_id, path| {
+        if let Some(app) = weak_clone.upgrade() {
+            println!("Skip image: plan={} path={}", plan_id, path);
+            
+            let image_manager = image_manager::ImageManager::new(db_clone.clone(), base_dir_clone.clone());
+            match image_manager.copy_to_pending(plan_id as i64, &path.to_string()) {
+                Ok(()) => {
+                    println!("Image copied to pending");
+                    app.global::<ui::PricingPageAdapter>().invoke_clear_slots();
+                    
+                    if let Ok(Some(plan)) = db_clone.get_plan(plan_id as i64) {
+                        categories_model_clone.set_vec(load_categories_for_plan(&base_dir_clone, &plan.name));
+                    }
+                }
+                Err(e) => eprintln!("Failed to skip image: {}", e),
             }
         }
     });
@@ -298,6 +401,73 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(app) = weak_clone.upgrade() {
             println!("Set project type: {}", ptype);
             app.global::<ui::PricingPageAdapter>().set_project_type(ptype);
+        }
+    });
+    
+    // ManagePage回调
+    let weak_clone = weak.clone();
+    let db_clone = db.clone();
+    let base_dir_clone = base_dir.clone();
+    let categories_model_clone = categories_model.clone();
+    app.global::<ui::ManagePageAdapter>().on_load_categories(move |plan_id| {
+        let db = db_clone.clone();
+        if let Ok(Some(plan)) = db.get_plan(plan_id as i64) {
+            categories_model_clone.set_vec(load_categories_for_plan(&base_dir_clone, &plan.name));
+        }
+    });
+    
+    let weak_clone = weak.clone();
+    let categories_model_clone = categories_model.clone();
+    app.global::<ui::ManagePageAdapter>().on_toggle_category(move |index| {
+        if let Some(app) = weak_clone.upgrade() {
+            let mut cats: Vec<ui::ImageCategoryData> = categories_model_clone.iter().collect();
+            if let Some(cat) = cats.get_mut(index as usize) {
+                cat.expanded = !cat.expanded;
+                categories_model_clone.set_vec(cats);
+            }
+        }
+    });
+    
+    let weak_clone = weak.clone();
+    app.global::<ui::ManagePageAdapter>().on_select_category(move |index| {
+        if let Some(app) = weak_clone.upgrade() {
+            app.global::<ui::ManagePageAdapter>().set_selected_category(index);
+            let categories = app.global::<ui::ManagePageAdapter>().get_categories();
+            if let Some(category) = categories.iter().nth(index as usize) {
+                let images: Vec<slint::SharedString> = category.images.iter().collect();
+                app.global::<ui::ManagePageAdapter>().set_current_images(images.as_slice().into());
+            }
+        }
+    });
+    
+    let weak_clone = weak.clone();
+    let base_dir_clone = base_dir.clone();
+    app.global::<ui::ManagePageAdapter>().on_select_image(move |index| {
+        if let Some(app) = weak_clone.upgrade() {
+            app.global::<ui::ManagePageAdapter>().set_selected_image(index);
+            
+            let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
+            if plan_name.is_empty() { return; }
+            
+            let categories = app.global::<ui::ManagePageAdapter>().get_categories();
+            let cat_index = app.global::<ui::ManagePageAdapter>().get_selected_category();
+            
+            if let Some(category) = categories.iter().nth(cat_index as usize) {
+                let images: Vec<slint::SharedString> = category.images.iter().collect();
+                if let Some(file_name) = images.get(index as usize) {
+                    let cat_name = category.name.to_string();
+                    let path = std::path::PathBuf::from(&base_dir_clone)
+                        .join("plans")
+                        .join(&plan_name)
+                        .join(&cat_name)
+                        .join(file_name.as_str());
+                    
+                    app.global::<ui::ManagePageAdapter>().set_selected_image_path(path.display().to_string().into());
+                    if let Ok(img) = slint::Image::load_from_path(&path) {
+                        app.global::<ui::ManagePageAdapter>().set_selected_image_data(img);
+                    }
+                }
+            }
         }
     });
     
@@ -339,7 +509,7 @@ mod tests {
         db::initialize_database(&conn).unwrap();
         
         let db = Arc::new(Database::new(conn));
-        let manager = plan_manager::PlanManager::new(db);
+        let manager = plan_manager::PlanManager::new(db, dir.path().to_path_buf());
         
         // Test create plan
         let plan = manager.create_plan("测试计划").unwrap();

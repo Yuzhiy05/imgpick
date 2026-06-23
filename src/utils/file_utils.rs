@@ -47,7 +47,7 @@ pub fn copy_image_to_dir(src: &Path, dest_dir: &Path) -> Result<PathBuf, String>
 
 pub fn create_directory_structure(base_dir: &Path, plan_name: &str) -> Result<PathBuf, String> {
     let plan_dir = base_dir.join(plan_name);
-    let dirs = ["source", "pending", "priced", "processing"];
+    let dirs = ["src", "pend", "priced", "proc"];
     
     for dir in dirs.iter() {
         let dir_path = plan_dir.join(dir);
@@ -144,10 +144,10 @@ mod tests {
         assert!(result.is_ok());
         
         let plan_dir = result.unwrap();
-        assert!(plan_dir.join("source").exists());
-        assert!(plan_dir.join("pending").exists());
+        assert!(plan_dir.join("src").exists());
+        assert!(plan_dir.join("pend").exists());
         assert!(plan_dir.join("priced").exists());
-        assert!(plan_dir.join("processing").exists());
+        assert!(plan_dir.join("proc").exists());
     }
 
     #[test]

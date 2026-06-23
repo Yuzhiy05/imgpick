@@ -1,14 +1,18 @@
 use crate::db::Database;
 use crate::models::Plan;
+use crate::utils::file_utils;
+use std::path::PathBuf;
 use std::sync::Arc;
 
+#[derive(Clone)]
 pub struct PlanManager {
-    db: Arc<Database>,
+    pub db: Arc<Database>,
+    base_dir: PathBuf,
 }
 
 impl PlanManager {
-    pub fn new(db: Arc<Database>) -> Self {
-        Self { db }
+    pub fn new(db: Arc<Database>, base_dir: PathBuf) -> Self {
+        Self { db, base_dir }
     }
 
     pub fn create_plan(&self, name: &str) -> Result<Plan, String> {
@@ -18,6 +22,10 @@ impl PlanManager {
 
         let id = self.db.create_plan(name)
             .map_err(|e| format!("创建计划失败: {}", e))?;
+
+        // 创建计划文件夹结构
+        let plans_dir = self.base_dir.join("plans");
+        file_utils::create_directory_structure(&plans_dir, name)?;
 
         let plan = self.db.get_plan(id)
             .map_err(|e| format!("获取计划失败: {}", e))?
@@ -62,12 +70,14 @@ mod tests {
     use super::*;
     use rusqlite::Connection;
     use crate::db::initialize_database;
+    use tempfile::tempdir;
 
     fn setup() -> PlanManager {
+        let temp_dir = tempdir().unwrap();
         let conn = Connection::open_in_memory().unwrap();
         initialize_database(&conn).unwrap();
         let db = Arc::new(Database::new(conn));
-        PlanManager::new(db)
+        PlanManager::new(db, temp_dir.path().to_path_buf())
     }
 
     #[test]

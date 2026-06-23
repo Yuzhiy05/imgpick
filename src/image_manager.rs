@@ -244,17 +244,125 @@ impl ImageManager {
         images
     }
 
-    pub fn save_pricing(&self, file_path: &str, _image_path: &str, price: &str) -> Result<(), String> {
-        // 从路径提取文件名
-        let path = Path::new(file_path);
-        let file_name = path.file_name()
+    fn plan_category_dir(&self, plan_name: &str, category: &str) -> std::path::PathBuf {
+        self.base_dir.join("plans").join(plan_name).join(category)
+    }
+
+    pub fn copy_to_pending(&self, plan_id: i64, source_path: &str) -> Result<(), String> {
+        let plan = self.db.get_plan(plan_id)
+            .map_err(|e| format!("获取计划失败: {}", e))?
+            .ok_or_else(|| "计划未找到".to_string())?;
+
+        let file_name = Path::new(source_path)
+            .file_name()
             .ok_or_else(|| "无法获取文件名".to_string())?
             .to_string_lossy()
             .to_string();
-        
-        println!("Saving pricing: {} - {}", file_name, price);
-        // TODO: 保存到数据库
+
+        let pend_dir = self.plan_category_dir(&plan.name, "pend");
+        std::fs::create_dir_all(&pend_dir)
+            .map_err(|e| format!("创建待标价目录失败: {}", e))?;
+
+        let dest_path = file_utils::copy_image_to_dir(Path::new(source_path), &pend_dir)
+            .map_err(|e| format!("复制图片失败: {}", e))?;
+        let dest_path_str = dest_path.to_string_lossy().to_string();
+
+        match self.db.find_image_by_name(plan_id, &file_name) {
+            Ok(Some(existing)) => {
+                // 删除旧状态文件
+                let old_path = Path::new(&existing.file_path);
+                if old_path.exists() {
+                    let _ = std::fs::remove_file(old_path);
+                }
+                // 更新DB记录
+                self.db.update_image_status(
+                    existing.id,
+                    ImageCategory::Pending.as_str(),
+                    &dest_path_str,
+                    None,
+                    None,
+                    None,
+                ).map_err(|e| format!("更新图片状态失败: {}", e))?;
+            }
+            _ => {
+                // 新建DB记录
+                let image = Image::new(plan_id, file_name, dest_path_str, ImageCategory::Pending);
+                self.db.create_image(&image)
+                    .map_err(|e| format!("保存图片信息失败: {}", e))?;
+            }
+        }
+
         Ok(())
+    }
+
+    pub fn save_priced(
+        &self,
+        plan_id: i64,
+        source_path: &str,
+        special_code: &str,
+        price: &str,
+        project_type: &str,
+    ) -> Result<i64, String> {
+        let plan = self.db.get_plan(plan_id)
+            .map_err(|e| format!("获取计划失败: {}", e))?
+            .ok_or_else(|| "计划未找到".to_string())?;
+
+        let src_path = Path::new(source_path);
+        let file_name = src_path.file_name()
+            .ok_or_else(|| "无法获取文件名".to_string())?
+            .to_string_lossy()
+            .to_string();
+
+        let priced_dir = self.plan_category_dir(&plan.name, "priced");
+        std::fs::create_dir_all(&priced_dir)
+            .map_err(|e| format!("创建已标价目录失败: {}", e))?;
+
+        let dest_path = file_utils::copy_image_to_dir(src_path, &priced_dir)
+            .map_err(|e| format!("复制图片失败: {}", e))?;
+        let dest_path_str = dest_path.to_string_lossy().to_string();
+
+        let code = Some(special_code.to_string());
+        let price_val = Some(price.to_string());
+        let sample = if project_type.is_empty() { None } else { Some(project_type.to_string()) };
+
+        let id = match self.db.find_image_by_name(plan_id, &file_name) {
+            Ok(Some(existing)) => {
+                // 删除旧状态文件
+                let old_path = Path::new(&existing.file_path);
+                if old_path.exists() {
+                    let _ = std::fs::remove_file(old_path);
+                }
+                // 更新DB记录
+                self.db.update_image_status(
+                    existing.id,
+                    ImageCategory::Priced.as_str(),
+                    &dest_path_str,
+                    code.as_deref(),
+                    price_val.as_deref(),
+                    sample.as_deref(),
+                ).map_err(|e| format!("更新图片状态失败: {}", e))?;
+                existing.id
+            }
+            _ => {
+                // 新建DB记录
+                let image = Image {
+                    id: 0,
+                    plan_id,
+                    file_name,
+                    file_path: dest_path_str,
+                    category: ImageCategory::Priced,
+                    group_name: None,
+                    special_code: code,
+                    price: price_val,
+                    sample_id: sample,
+                    created_at: String::new(),
+                };
+                self.db.create_image(&image)
+                    .map_err(|e| format!("保存图片信息失败: {}", e))? as i64
+            }
+        };
+
+        Ok(id)
     }
 
     pub fn rename_image(&self, image_id: i64, new_name: &str) -> Result<(), String> {

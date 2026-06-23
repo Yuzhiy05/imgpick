@@ -102,6 +102,46 @@ impl Database {
         }
     }
 
+    pub fn find_image_by_name(&self, plan_id: i64, file_name: &str) -> Result<Option<Image>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, plan_id, file_name, file_path, category, group_name, special_code, price, sample_id, created_at 
+             FROM images WHERE plan_id = ?1 AND file_name = ?2"
+        )?;
+        let mut rows = stmt.query_map(params![plan_id, file_name], |row| {
+            Ok(Image {
+                id: row.get(0)?,
+                plan_id: row.get(1)?,
+                file_name: row.get(2)?,
+                file_path: row.get(3)?,
+                category: ImageCategory::from_str(&row.get::<_, String>(4)?).unwrap(),
+                group_name: row.get(5)?,
+                special_code: row.get(6)?,
+                price: row.get(7)?,
+                sample_id: row.get(8)?,
+                created_at: row.get(9)?,
+            })
+        })?;
+        match rows.next() {
+            Some(row) => Ok(Some(row?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn update_image_status(
+        &self,
+        id: i64,
+        category: &str,
+        file_path: &str,
+        special_code: Option<&str>,
+        price: Option<&str>,
+        sample_id: Option<&str>,
+    ) -> Result<usize> {
+        self.conn.execute(
+            "UPDATE images SET category = ?1, file_path = ?2, special_code = ?3, price = ?4, sample_id = ?5 WHERE id = ?6",
+            params![category, file_path, special_code, price, sample_id, id],
+        )
+    }
+
     pub fn get_images_by_plan(&self, plan_id: i64) -> Result<Vec<Image>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, plan_id, file_name, file_path, category, group_name, special_code, price, sample_id, created_at 

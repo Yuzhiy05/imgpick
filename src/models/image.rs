@@ -18,6 +18,15 @@ impl ImageCategory {
         }
     }
 
+    pub fn folder_name(&self) -> &'static str {
+        match self {
+            ImageCategory::Source => "src",
+            ImageCategory::Pending => "pend",
+            ImageCategory::Priced => "priced",
+            ImageCategory::Processing => "proc",
+        }
+    }
+
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "source" => Some(ImageCategory::Source),
