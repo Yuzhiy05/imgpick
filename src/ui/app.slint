@@ -222,16 +222,19 @@ export global PricingPageAdapter {
     in-out property <string> slot8: "";
     // 当前输入位置 (0-7)
     in-out property <int> current-slot: 0;
+    // 当前图片种类：""=未选择, "blood"=血型, "antibody"=抗筛, "crossmatch"=交叉配血
+    in-out property <string> project-type: "";
 
     callback select-folder-item(int);
     callback load-images(int);  // 加载指定文件夹的图片
     callback next-image();
     callback prev-image();
-    callback confirm-pricing(string, string, string);  // 确认标价：图片名、图片路径、标价
+    callback confirm-pricing(string, string, string, string);  // 确认标价：图片名、图片路径、标价、种类
     callback clear-slots();  // 清空所有槽位
     callback input-code(string);  // 输入价位
     callback focus-slot(int);  // 聚焦槽位
     callback delete-slot(int);  // 删除槽位
+    callback set-project-type(string);  // 设置图片种类
     
     // 输入价位函数
     input-code(code) => {
@@ -345,6 +348,23 @@ export component PricingPage inherits Rectangle {
                 text: "下一张";
                 width: 70px;
                 clicked => { PricingPageAdapter.next-image(); }
+            }
+
+            // 当前图片种类显示
+            Rectangle {
+                width: 100px;
+                background: PricingPageAdapter.project-type != "" ? #e3f2fd : #f5f5f5;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: PricingPageAdapter.project-type != "" ? #1976D2 : #e0e0e0;
+
+                Text {
+                    text: PricingPageAdapter.project-type == "blood" ? "血型" : PricingPageAdapter.project-type == "antibody" ? "抗筛" : PricingPageAdapter.project-type == "crossmatch" ? "交叉配血" : "未选择种类";
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    color: PricingPageAdapter.project-type != "" ? #1976D2 : #999;
+                    font-size: 12px;
+                }
             }
         }
 
@@ -491,6 +511,25 @@ export component PricingPage inherits Rectangle {
                 }
             }
         }
+
+        // 种类按钮
+        HorizontalLayout {
+            spacing: 4px;
+            height: 30px;
+
+            blood-btn := Rectangle { width: 50px; height: 30px; border-radius: 4px; border-width: 1px; border-color: PricingPageAdapter.project-type == "blood" ? #1976D2 : blood-touch.has-hover ? #90caf9 : #bdbdbd; background: PricingPageAdapter.project-type == "blood" ? #e3f2fd : blood-touch.has-hover ? #f5f5f5 : white;
+                blood-touch := TouchArea { clicked => { PricingPageAdapter.set-project-type("blood"); } }
+                Text { text: "血型"; horizontal-alignment: center; vertical-alignment: center; color: PricingPageAdapter.project-type == "blood" ? #1976D2 : #333; }
+            }
+            antibody-btn := Rectangle { width: 50px; height: 30px; border-radius: 4px; border-width: 1px; border-color: PricingPageAdapter.project-type == "antibody" ? #1976D2 : antibody-touch.has-hover ? #90caf9 : #bdbdbd; background: PricingPageAdapter.project-type == "antibody" ? #e3f2fd : antibody-touch.has-hover ? #f5f5f5 : white;
+                antibody-touch := TouchArea { clicked => { PricingPageAdapter.set-project-type("antibody"); } }
+                Text { text: "抗筛"; horizontal-alignment: center; vertical-alignment: center; color: PricingPageAdapter.project-type == "antibody" ? #1976D2 : #333; }
+            }
+            crossmatch-btn := Rectangle { width: 70px; height: 30px; border-radius: 4px; border-width: 1px; border-color: PricingPageAdapter.project-type == "crossmatch" ? #1976D2 : crossmatch-touch.has-hover ? #90caf9 : #bdbdbd; background: PricingPageAdapter.project-type == "crossmatch" ? #e3f2fd : crossmatch-touch.has-hover ? #f5f5f5 : white;
+                crossmatch-touch := TouchArea { clicked => { PricingPageAdapter.set-project-type("crossmatch"); } }
+                Text { text: "交叉配血"; horizontal-alignment: center; vertical-alignment: center; color: PricingPageAdapter.project-type == "crossmatch" ? #1976D2 : #333; }
+            }
+        }
         
         // 价位按钮
         HorizontalLayout {
@@ -516,11 +555,23 @@ export component PricingPage inherits Rectangle {
                 clicked => {
                     // 获取标价
                     let price = PricingPageAdapter.slot1 + PricingPageAdapter.slot2 + PricingPageAdapter.slot3 + PricingPageAdapter.slot4 + PricingPageAdapter.slot5 + PricingPageAdapter.slot6 + PricingPageAdapter.slot7 + PricingPageAdapter.slot8;
-                    if price != "" && PricingPageAdapter.current-image-path != "" {
+                    if price != "" && PricingPageAdapter.current-image-path != "" && PricingPageAdapter.project-type != "" {
                         // 直接使用路径作为文件名（后续在Rust端处理）
-                        PricingPageAdapter.confirm-pricing(PricingPageAdapter.current-image-path, PricingPageAdapter.current-image-path, price);
+                        PricingPageAdapter.confirm-pricing(PricingPageAdapter.current-image-path, PricingPageAdapter.current-image-path, price, PricingPageAdapter.project-type);
                     }
                 }
+            }
+
+            Button {
+                text: "上一张";
+                width: 70px;
+                clicked => { PricingPageAdapter.prev-image(); }
+            }
+
+            Button {
+                text: "下一张";
+                width: 70px;
+                clicked => { PricingPageAdapter.next-image(); }
             }
 
             Button {

@@ -249,9 +249,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 确认标价回调
     let weak_clone = weak.clone();
     let db_clone = db.clone();
-    app.global::<ui::PricingPageAdapter>().on_confirm_pricing(move |filename, path, price| {
+    app.global::<ui::PricingPageAdapter>().on_confirm_pricing(move |filename, path, price, project_type| {
         if let Some(_app) = weak_clone.upgrade() {
-            println!("Confirm pricing: {} - {} - {}", filename, path, price);
+            // 转换种类：blood->Abo, antibody->AS, crossmatch->CM
+            let db_type = match project_type.as_str() {
+                "blood" => "Abo",
+                "antibody" => "AS",
+                "crossmatch" => "CM",
+                _ => "",
+            };
+            println!("Confirm pricing: {} - {} - {} - {}", filename, path, price, db_type);
             
             // 保存到数据库
             let image_manager = image_manager::ImageManager::new(db_clone.clone(), std::path::PathBuf::from("."));
@@ -259,6 +266,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(_) => println!("Pricing saved successfully"),
                 Err(e) => eprintln!("Failed to save pricing: {}", e),
             }
+        }
+    });
+    
+    // 设置图片种类回调
+    let weak_clone = weak.clone();
+    app.global::<ui::PricingPageAdapter>().on_set_project_type(move |ptype| {
+        if let Some(app) = weak_clone.upgrade() {
+            println!("Set project type: {}", ptype);
+            app.global::<ui::PricingPageAdapter>().set_project_type(ptype);
         }
     });
     
