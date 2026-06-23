@@ -94,6 +94,45 @@ fn load_categories_for_plan(base_dir: &Path, plan_name: &str) -> Vec<ui::ImageCa
     result
 }
 
+fn parse_price_slots(price: &str) -> [String; 8] {
+    let codes = ["1+/+", "4+", "3+", "2+", "+", "-", "?", "M"];
+    let mut slots: [String; 8] = Default::default();
+    let mut remaining = price;
+    let mut idx = 0;
+    while !remaining.is_empty() && idx < 8 {
+        for code in &codes {
+            if remaining.starts_with(code) {
+                slots[idx] = code.to_string();
+                remaining = &remaining[code.len()..];
+                break;
+            }
+        }
+        idx += 1;
+    }
+    slots
+}
+
+fn project_type_display(pt: &str) -> &str {
+    match pt {
+        "Abo" => "血型",
+        "AS" => "抗筛",
+        "CM" => "交叉配血",
+        _ => "",
+    }
+}
+
+fn clear_manage_slots(app: &ui::App) {
+    app.global::<ui::ManagePageAdapter>().set_slot1("".into());
+    app.global::<ui::ManagePageAdapter>().set_slot2("".into());
+    app.global::<ui::ManagePageAdapter>().set_slot3("".into());
+    app.global::<ui::ManagePageAdapter>().set_slot4("".into());
+    app.global::<ui::ManagePageAdapter>().set_slot5("".into());
+    app.global::<ui::ManagePageAdapter>().set_slot6("".into());
+    app.global::<ui::ManagePageAdapter>().set_slot7("".into());
+    app.global::<ui::ManagePageAdapter>().set_slot8("".into());
+    app.global::<ui::ManagePageAdapter>().set_project_type_display("".into());
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize database
     let conn = Connection::open("imgpick.db")?;
@@ -442,6 +481,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     let weak_clone = weak.clone();
     let base_dir_clone = base_dir.clone();
+    let db_clone = db.clone();
     app.global::<ui::ManagePageAdapter>().on_select_image(move |index| {
         if let Some(app) = weak_clone.upgrade() {
             app.global::<ui::ManagePageAdapter>().set_selected_image(index);
@@ -465,6 +505,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     app.global::<ui::ManagePageAdapter>().set_selected_image_path(path.display().to_string().into());
                     if let Ok(img) = slint::Image::load_from_path(&path) {
                         app.global::<ui::ManagePageAdapter>().set_selected_image_data(img);
+                    }
+                    
+                    // 如果是已标价图片，从DB读取价位和项目类型
+                    if cat_name == "priced" {
+                        if let Ok(plan) = db_clone.get_plan_by_name(&plan_name) {
+                            if let Some(plan) = plan {
+                                if let Ok(Some(image)) = db_clone.find_image_by_name(plan.id, &file_name.to_string()) {
+                                    if let Some(ref price) = image.price {
+                                        let slots = parse_price_slots(price);
+                                        app.global::<ui::ManagePageAdapter>().set_slot1(slots[0].clone().into());
+                                        app.global::<ui::ManagePageAdapter>().set_slot2(slots[1].clone().into());
+                                        app.global::<ui::ManagePageAdapter>().set_slot3(slots[2].clone().into());
+                                        app.global::<ui::ManagePageAdapter>().set_slot4(slots[3].clone().into());
+                                        app.global::<ui::ManagePageAdapter>().set_slot5(slots[4].clone().into());
+                                        app.global::<ui::ManagePageAdapter>().set_slot6(slots[5].clone().into());
+                                        app.global::<ui::ManagePageAdapter>().set_slot7(slots[6].clone().into());
+                                        app.global::<ui::ManagePageAdapter>().set_slot8(slots[7].clone().into());
+                                    } else {
+                                        clear_manage_slots(&app);
+                                    }
+                                    if let Some(ref pt) = image.sample_id {
+                                        app.global::<ui::ManagePageAdapter>().set_project_type_display(project_type_display(pt).into());
+                                    } else {
+                                        app.global::<ui::ManagePageAdapter>().set_project_type_display("".into());
+                                    }
+                                } else {
+                                    clear_manage_slots(&app);
+                                }
+                            } else {
+                                clear_manage_slots(&app);
+                            }
+                        } else {
+                            clear_manage_slots(&app);
+                        }
+                    } else {
+                        clear_manage_slots(&app);
                     }
                 }
             }

@@ -212,6 +212,17 @@ export global ManagePageAdapter {
     in-out property <image> selected-image-data;
     in-out property <string> plan-name: "";
     
+    // 已标价图片的价位槽和项目类型
+    in-out property <string> slot1: "";
+    in-out property <string> slot2: "";
+    in-out property <string> slot3: "";
+    in-out property <string> slot4: "";
+    in-out property <string> slot5: "";
+    in-out property <string> slot6: "";
+    in-out property <string> slot7: "";
+    in-out property <string> slot8: "";
+    in-out property <string> project-type-display: "";
+    
     callback load-categories(int);
     callback toggle-category(int);
     callback select-category(int);
@@ -722,6 +733,57 @@ export component ManagePage inherits Rectangle {
             font-weight: 700;
             color: #1976D2;
             height: 28px;
+        }
+
+        // 价位槽 + 项目类型（仅已标价图片显示）
+        HorizontalLayout {
+            spacing: 4px;
+            height: 30px;
+
+            // 8个价位槽
+            Rectangle { border-width: 1px; border-color: #bdbdbd; border-radius: 4px; background: white; width: 50px; height: 30px;
+                Text { text: ManagePageAdapter.slot1; horizontal-alignment: center; vertical-alignment: center; color: #333; font-size: 11px; }
+            }
+            Rectangle { border-width: 1px; border-color: #bdbdbd; border-radius: 4px; background: white; width: 50px; height: 30px;
+                Text { text: ManagePageAdapter.slot2; horizontal-alignment: center; vertical-alignment: center; color: #333; font-size: 11px; }
+            }
+            Rectangle { border-width: 1px; border-color: #bdbdbd; border-radius: 4px; background: white; width: 50px; height: 30px;
+                Text { text: ManagePageAdapter.slot3; horizontal-alignment: center; vertical-alignment: center; color: #333; font-size: 11px; }
+            }
+            Rectangle { border-width: 1px; border-color: #bdbdbd; border-radius: 4px; background: white; width: 50px; height: 30px;
+                Text { text: ManagePageAdapter.slot4; horizontal-alignment: center; vertical-alignment: center; color: #333; font-size: 11px; }
+            }
+            Rectangle { border-width: 1px; border-color: #bdbdbd; border-radius: 4px; background: white; width: 50px; height: 30px;
+                Text { text: ManagePageAdapter.slot5; horizontal-alignment: center; vertical-alignment: center; color: #333; font-size: 11px; }
+            }
+            Rectangle { border-width: 1px; border-color: #bdbdbd; border-radius: 4px; background: white; width: 50px; height: 30px;
+                Text { text: ManagePageAdapter.slot6; horizontal-alignment: center; vertical-alignment: center; color: #333; font-size: 11px; }
+            }
+            Rectangle { border-width: 1px; border-color: #bdbdbd; border-radius: 4px; background: white; width: 50px; height: 30px;
+                Text { text: ManagePageAdapter.slot7; horizontal-alignment: center; vertical-alignment: center; color: #333; font-size: 11px; }
+            }
+            Rectangle { border-width: 1px; border-color: #bdbdbd; border-radius: 4px; background: white; width: 50px; height: 30px;
+                Text { text: ManagePageAdapter.slot8; horizontal-alignment: center; vertical-alignment: center; color: #333; font-size: 11px; }
+            }
+
+            Rectangle { width: 8px; background: transparent; }
+
+            // 项目类型显示
+            Rectangle {
+                width: 100px;
+                height: 30px;
+                background: ManagePageAdapter.project-type-display != "" ? #e3f2fd : #f5f5f5;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: ManagePageAdapter.project-type-display != "" ? #1976D2 : #e0e0e0;
+                Text {
+                    text: ManagePageAdapter.project-type-display != "" ? ManagePageAdapter.project-type-display : "未标价";
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    color: ManagePageAdapter.project-type-display != "" ? #1976D2 : #999;
+                    font-size: 12px;
+                }
+            }
         }
 
         // 图片显示区域 + 图片文件集合

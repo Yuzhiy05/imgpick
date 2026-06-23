@@ -40,6 +40,23 @@ impl Database {
         }
     }
 
+    pub fn get_plan_by_name(&self, name: &str) -> Result<Option<Plan>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, name, created_at FROM plans WHERE name = ?1"
+        )?;
+        let mut rows = stmt.query_map(params![name], |row| {
+            Ok(Plan {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                created_at: row.get(2)?,
+            })
+        })?;
+        match rows.next() {
+            Some(row) => Ok(Some(row?)),
+            None => Ok(None),
+        }
+    }
+
     pub fn get_all_plans(&self) -> Result<Vec<Plan>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, created_at FROM plans ORDER BY created_at DESC"
