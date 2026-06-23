@@ -94,6 +94,41 @@ fn load_categories_for_plan(base_dir: &Path, plan_name: &str) -> Vec<ui::ImageCa
     result
 }
 
+fn refresh_categories_for_plan(base_dir: &Path, plan_name: &str, current_categories: &[ui::ImageCategoryData]) -> Vec<ui::ImageCategoryData> {
+    let plan_dir = base_dir.join("plans").join(plan_name);
+    let categories = vec![
+        ("src", "图片源"),
+        ("pend", "待标价"),
+        ("priced", "已标价"),
+        ("proc", "待处理"),
+    ];
+    
+    let mut result = Vec::new();
+    for (i, (folder_name, display_name)) in categories.iter().enumerate() {
+        let folder_path = plan_dir.join(folder_name);
+        let images = if folder_path.exists() {
+            scan_folder_images(&folder_path)
+        } else {
+            Vec::new()
+        };
+        let count = images.len();
+        
+        // 保持原有的展开状态
+        let expanded = current_categories.get(i)
+            .map(|cat| cat.expanded)
+            .unwrap_or(false);
+        
+        result.push(ui::ImageCategoryData {
+            name: (*folder_name).into(),
+            display_name: (*display_name).into(),
+            count: count as i32,
+            expanded,
+            images: images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+        });
+    }
+    result
+}
+
 fn parse_price_slots(price: &str) -> [String; 8] {
     let codes = ["1+/+", "4+", "3+", "2+", "+", "-", "?", "M"];
     let mut slots: [String; 8] = Default::default();
@@ -469,13 +504,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     app.global::<ui::PricingPageAdapter>().set_status_message("标价成功".into());
                     
                     if let Ok(Some(plan)) = db_clone.get_plan(plan_id as i64) {
-                        let cats = load_categories_for_plan(&base_dir_clone, &plan.name);
+                        // 获取当前展开状态，刷新时保持
+                        let current_categories: Vec<ui::ImageCategoryData> = categories_model_clone.iter().collect();
+                        let cats = refresh_categories_for_plan(&base_dir_clone, &plan.name, &current_categories);
                         update_pricing_progress(&app, &cats);
                         categories_model_clone.set_vec(cats);
-                        
-                        // 重置高亮索引
-                        app.global::<ui::ManagePageAdapter>().set_current_image_index(-1);
-                        app.global::<ui::ManagePageAdapter>().set_current_category_index(-1);
+                        // 不重置高亮索引，保持当前操作状态
                     }
                 }
                 Err(e) => eprintln!("Failed to save pricing: {}", e),
@@ -500,13 +534,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     app.global::<ui::PricingPageAdapter>().set_status_message("已跳过，存入待标价".into());
                     
                     if let Ok(Some(plan)) = db_clone.get_plan(plan_id as i64) {
-                        let cats = load_categories_for_plan(&base_dir_clone, &plan.name);
+                        // 获取当前展开状态，刷新时保持
+                        let current_categories: Vec<ui::ImageCategoryData> = categories_model_clone.iter().collect();
+                        let cats = refresh_categories_for_plan(&base_dir_clone, &plan.name, &current_categories);
                         update_pricing_progress(&app, &cats);
                         categories_model_clone.set_vec(cats);
-                        
-                        // 重置高亮索引
-                        app.global::<ui::ManagePageAdapter>().set_current_image_index(-1);
-                        app.global::<ui::ManagePageAdapter>().set_current_category_index(-1);
+                        // 不重置高亮索引，保持当前操作状态
                     }
                 }
                 Err(e) => eprintln!("Failed to skip image: {}", e),
