@@ -694,12 +694,10 @@ export component PricingPage inherits Rectangle {
                     border-width: 1px;
                     border-color: #e0e0e0;
                     border-radius: 4px;
-                    clip: true;
 
                     VerticalLayout {
                         padding: 4px;
                         spacing: 2px;
-                        alignment: start;
 
                         Text {
                             text: "图片分类";
@@ -717,25 +715,27 @@ export component PricingPage inherits Rectangle {
                             font-size: 11px;
                         }
 
-                        if ManagePageAdapter.categories.length > 0: VerticalLayout {
-                            spacing: 2px;
-                            alignment: start;
+                        if ManagePageAdapter.categories.length > 0: ScrollView {
+                            VerticalLayout {
+                                spacing: 2px;
+                                alignment: start;
 
-                            for category[i] in ManagePageAdapter.categories: PricingCategoryItem {
-                                category-name: category.name;
-                                display-name: category.display-name;
-                                image-count: category.count;
-                                expanded: category.expanded;
-                                images: category.images;
-                                is-selected: ManagePageAdapter.selected-category == i;
+                                for category[i] in ManagePageAdapter.categories: PricingCategoryItem {
+                                    category-name: category.name;
+                                    display-name: category.display-name;
+                                    image-count: category.count;
+                                    expanded: category.expanded;
+                                    images: category.images;
+                                    is-selected: ManagePageAdapter.selected-category == i;
 
-                                toggle-clicked => {
-                                    ManagePageAdapter.toggle-category(i);
-                                }
+                                    toggle-clicked => {
+                                        ManagePageAdapter.toggle-category(i);
+                                    }
 
-                                image-clicked(idx) => {
-                                    ManagePageAdapter.select-category(i);
-                                    ManagePageAdapter.select-image(idx);
+                                    image-clicked(idx) => {
+                                        ManagePageAdapter.select-category(i);
+                                        ManagePageAdapter.select-image(idx);
+                                    }
                                 }
                             }
                         }

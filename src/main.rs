@@ -530,6 +530,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
             if plan_name.is_empty() { return; }
+            let pricing_plan_id = app.global::<ui::PricingPageAdapter>().get_plan_id();
+            if pricing_plan_id == 0 { return; }
             
             let categories = app.global::<ui::ManagePageAdapter>().get_categories();
             let cat_index = app.global::<ui::ManagePageAdapter>().get_selected_category();
@@ -544,19 +546,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .join(&cat_name)
                         .join(file_name.as_str());
                     
-                    app.global::<ui::ManagePageAdapter>().set_selected_image_path(path.display().to_string().into());
-                    if let Ok(img) = slint::Image::load_from_path(&path) {
-                        app.global::<ui::ManagePageAdapter>().set_selected_image_data(img.clone());
-                        
-                        // 加载到标价区显示（所有分类都加载，不只是pend）
-                        app.global::<ui::PricingPageAdapter>().set_current_image_path(path.display().to_string().into());
-                        app.global::<ui::PricingPageAdapter>().set_current_image(img);
-                        if cat_name == "pend" {
-                            app.global::<ui::PricingPageAdapter>().invoke_clear_slots();
+                    let path_str = path.display().to_string();
+                    app.global::<ui::ManagePageAdapter>().set_selected_image_path(path_str.clone().into());
+                    
+                    // 加载图片到PricingPage显示
+                    match slint::Image::load_from_path(&path) {
+                        Ok(img) => {
+                            app.global::<ui::PricingPageAdapter>().set_current_image_path(path_str.into());
+                            app.global::<ui::PricingPageAdapter>().set_current_image(img);
+                            if cat_name == "pend" {
+                                app.global::<ui::PricingPageAdapter>().invoke_clear_slots();
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to load image {}: {}", path.display(), e);
+                            app.global::<ui::PricingPageAdapter>().set_current_image_path("".into());
                         }
                     }
                     
-                    // 如果是已标价图片，从DB读取价位和项目类型
+                    // 已标价图片：从DB读取价位和项目类型
                     if cat_name == "priced" {
                         if let Ok(plan) = db_clone.get_plan_by_name(&plan_name) {
                             if let Some(plan) = plan {
