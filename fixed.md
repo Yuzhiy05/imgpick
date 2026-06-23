@@ -196,8 +196,12 @@ slint = { version = "1.16.1", features = ["default"] }
 | 测试逻辑 | 1 | 状态管理理解错误 |
 | 依赖配置 | 2 | dev-dependencies、edition |
 | 上游问题 | 1 | Slint/ICU4X已知bug |
-| Slint布局/模型 | 2 | Flickable宽度传播、GridLayout空模型崩溃 |
+| Slint布局/模型 | 5 | Flickable宽度传播、GridLayout空模型崩溃、ListView动态高度、ScrollView缺失、高度计算不一致 |
 | UI样式/主题 | 2 | native主题输入框显示问题、窗口宽度累加 |
+| 数据一致性 | 2 | 图片状态多源冲突、DB路径不一致 |
+| 渲染性能 | 1 | 700+项for循环导致黑屏 |
+| 回调/线程 | 2 | thread::spawn不可靠、回调未刷新数据 |
+| 路径处理 | 2 | 混用斜杠、import路径错误 |
 
 **关键经验**:
 1. Slint组件必须显式导出才能被引用
@@ -207,6 +211,12 @@ slint = { version = "1.16.1", features = ["default"] }
 5. Flickable会让preferred width随内容变化，改用直接GridLayout + clip:true
 6. GridLayout + for循环在模型变空时会崩溃，用if条件守卫避免
 7. Slint的`preferred-width`和`max-width`可能不生效，必要时使用固定`width`
+8. 不同UI主题对控件样式影响大，fluent-light主题显示效果较好
+9. 共享VecModel + set_vec() 避免模型替换导致的问题
+10. 大量项（700+）用ScrollView包裹，避免for循环一次性渲染导致崩溃
+11. Timer比thread::spawn更可靠，跑在UI线程上
+12. 图片状态以DB为唯一真相源，文件夹内容是DB的镜像
+13. 高度计算公式必须与实际项目高度+spacing一致
 8. 不同UI主题对控件样式影响大，fluent-light主题显示效果较好
 
 ---
@@ -456,4 +466,155 @@ app.global().set_folder_prefix(parent_path.into());
 // 选择列表项时
 let folder_name = display.split('/').last().unwrap();
 let full_path = format!("{}/{}", prefix, folder_name);
+```
+
+---
+
+## 20. ManagePage不显示图片
+
+**问题描述**: 创建计划后切换到图片管理页面，分类列表为空或不更新。
+
+**原因**: `load_categories_for_plan` 仅在选计划时调用一次，标价/跳过操作后未刷新。另外使用了 `ListView` 但分类项高度动态变化（展开/折叠），ListView 不支持动态高度。
+
+**解决方案**:
+1. 标价/跳过后调用 `categories_model.set_vec()` 刷新共享模型
+2. 将 `ListView` 改为 `VerticalLayout`（分类项高度变化时正确渲染）
+3. 使用共享 `Rc<VecModel<ImageCategoryData>>` + `set_vec()` 避免模型替换崩溃
+
+---
+
+## 21. 图片状态唯一约束
+
+**问题描述**: 同一张图片可能同时存在于多个文件夹（如 pend/ 和 priced/），状态不唯一。
+
+**原因**: `copy_to_pending` 和 `save_priced` 直接复制文件到目标文件夹，未检查同名文件是否已存在于其他文件夹。
+
+**解决方案**: 以数据库为唯一真相源。复制前先查 DB `find_image_by_name`，若存在旧记录则删除旧状态文件并更新 DB，若不存在则新建记录。
+
+```rust
+// 查DB判断是否存在旧记录
+match self.db.find_image_by_name(plan_id, &file_name) {
+    Ok(Some(existing)) => {
+        // 删除旧状态文件
+        let old_path = Path::new(&existing.file_path);
+        if old_path.exists() { let _ = std::fs::remove_file(old_path); }
+        // 更新DB记录
+        self.db.update_image_status(existing.id, ...)?;
+    }
+    _ => {
+        // 新建DB记录
+        self.db.create_image(&image)?;
+    }
+}
+```
+
+---
+
+## 22. 路径混用斜杠
+
+**问题描述**: `D:\workfile\relia\岳阳\修改原图\考察组/ResultImgFile\2026-01-30.jpg` 混用了 `\` 和 `/`。
+
+**原因**: `format!("{}/{}", prefix, folder_name)` 使用 `/` 拼接，但 Windows 路径用 `\`。
+
+**解决方案**: 改用 `Path::join()` 自动处理路径分隔符。
+
+```rust
+// 错误
+let full_path = format!("{}/{}", prefix, folder_name);
+
+// 正确
+let path = std::path::Path::new(&prefix).join(folder_name);
+```
+
+---
+
+## 23. ManagePage点击图片不显示
+
+**问题描述**: 在图片管理页面点击图片名，左侧不显示图片。
+
+**原因**: `on_select_image` 回调只设置了 `selected-image` 索引，未加载实际图片。
+
+**解决方案**: 在回调中构造完整路径 `plans/{plan}/{category}/{filename}`，用 `slint::Image::load_from_path()` 加载，设置 `selected-image-data` 和 `PricingPageAdapter.current-image`。
+
+---
+
+## 24. 标价成功消息不消失
+
+**问题描述**: 确认标价后显示的"标价成功"消息一直不消失。
+
+**原因**: 使用 `std::thread::spawn` + `sleep` 在子线程中清除消息，但 Slint 属性更新在子线程中不可靠。
+
+**解决方案**: 改用 Slint 内置 `Timer` 组件，跑在 UI 线程上，2 秒后触发 `clear-status` 回调。
+
+```slint
+Timer {
+    interval: 2s;
+    running: PricingPageAdapter.status-message != "";
+    triggered => {
+        PricingPageAdapter.clear-status();
+    }
+}
+```
+
+---
+
+## 25. PricingPage右侧面板分类列表撑开布局
+
+**问题描述**: 选择计划后，标价页面主内容区被压缩到很底部。
+
+**原因**: 右侧面板的 `VerticalLayout` 无高度约束，分类加载后撑开父容器。
+
+**解决方案**: 给右侧面板容器加 `clip: true` + `vertical-stretch: 1`，内部 `VerticalLayout` 加 `alignment: start`。
+
+---
+
+## 26. 选择文件夹不导入图片到计划src目录
+
+**问题描述**: 点击"选择文件夹"后，图片没有复制到计划的 `src/` 文件夹。
+
+**原因**:
+1. `on_select_folder` 只把文件夹名加到显示列表，未调用 `import_images_from_folder`
+2. `import_images_from_folder` 路径还是旧的 `self.base_dir.join(&plan.name).join("source")`
+
+**解决方案**:
+1. `on_select_folder` 改为调用 `image_manager.import_images_from_folder`，完成后刷新分类和进度
+2. `import_images_from_folder` 路径改为 `self.plan_category_dir(&plan.name, "src")`
+
+---
+
+## 27. 图片源展开黑屏（700+图片）
+
+**问题描述**: 展开含 700+ 图片的"图片源"分类时，整个窗口黑屏。
+
+**原因**: `for` 循环渲染 700+ 项导致 Slint 渲染器崩溃。
+
+**解决方案**: 用 `ScrollView` 包裹分类列表，支持滚动，避免一次性渲染所有项。
+
+```slint
+if ManagePageAdapter.categories.length > 0: ScrollView {
+    VerticalLayout {
+        for category[i] in ManagePageAdapter.categories: PricingCategoryItem { ... }
+    }
+}
+```
+
+---
+
+## 28. PricingCategoryItem展开后底部空白
+
+**问题描述**: 展开图片源分类后，最后一张图片名下方有一大段空白才到下一个分类。
+
+**原因**: 高度计算用 `image-count * 20px`，但实际项目高度是 `18px + 1px spacing = 19px`，每项多出 1px。
+
+**解决方案**: 统一项目高度为 `20px`，`spacing` 设为 `0px`，与高度计算公式一致。
+
+```slint
+height: expanded ? (22px + image-count * 20px) : 22px;  // 计算公式
+
+VerticalLayout {
+    spacing: 0px;  // 原来是 1px
+    for image[i] in images: Rectangle {
+        height: 20px;  // 原来是 18px
+    }
+}
 ```
