@@ -667,6 +667,7 @@ export component PricingPage inherits Rectangle {
                 // 图片显示区域 (90%)
                 Rectangle {
                     horizontal-stretch: 9;
+                    vertical-stretch: 1;
                     background: transparent;
 
                     if PricingPageAdapter.current-image-path == "": Text {
@@ -687,15 +688,18 @@ export component PricingPage inherits Rectangle {
                 // 分类列表面板 (10%)
                 Rectangle {
                     horizontal-stretch: 1;
+                    vertical-stretch: 1;
                     min-width: 140px;
                     background: #fafafa;
                     border-width: 1px;
                     border-color: #e0e0e0;
                     border-radius: 4px;
+                    clip: true;
 
                     VerticalLayout {
                         padding: 4px;
                         spacing: 2px;
+                        alignment: start;
 
                         Text {
                             text: "图片分类";
@@ -714,6 +718,9 @@ export component PricingPage inherits Rectangle {
                         }
 
                         if ManagePageAdapter.categories.length > 0: VerticalLayout {
+                            spacing: 2px;
+                            alignment: start;
+
                             for category[i] in ManagePageAdapter.categories: PricingCategoryItem {
                                 category-name: category.name;
                                 display-name: category.display-name;
