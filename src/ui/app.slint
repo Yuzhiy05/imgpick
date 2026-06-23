@@ -209,6 +209,7 @@ export global PricingPageAdapter {
     in-out property <[string]> images: [];  // 当前文件夹的图片路径列表
     in-out property <int> current-image-index: -1;  // 当前显示的图片索引
     in-out property <string> current-image-path: "";  // 当前显示的图片路径
+    in-out property <string> folder-prefix: "";  // 完整文件夹路径前缀
     in-out property <image> current-image;  // 当前显示的图片
     
     // 8个价位输入槽位
@@ -539,7 +540,7 @@ export component PricingPage inherits Rectangle {
             Button { text: "4+"; width: 50px; clicked => { PricingPageAdapter.input-code("4+"); } }
             Button { text: "3+"; width: 50px; clicked => { PricingPageAdapter.input-code("3+"); } }
             Button { text: "2+"; width: 50px; clicked => { PricingPageAdapter.input-code("2+"); } }
-            Button { text: "1+/+"; width: 50px; clicked => { PricingPageAdapter.input-code("1+/+"); } }
+            Button { text: "+"; width: 50px; clicked => { PricingPageAdapter.input-code("+"); } }
             Button { text: "-"; width: 50px; clicked => { PricingPageAdapter.input-code("-"); } }
             Button { text: "?"; width: 50px; clicked => { PricingPageAdapter.input-code("?"); } }
             Button { text: "M"; width: 50px; clicked => { PricingPageAdapter.input-code("M"); } }

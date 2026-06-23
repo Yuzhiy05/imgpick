@@ -151,12 +151,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .pick_folder();
             
             if let Some(path) = folder {
-                let path_str = path.display().to_string();
-                println!("Selected folder: {}", path_str);
+                let full_path = path.display().to_string();
+                println!("Selected folder: {}", full_path);
+                
+                // 父目录路径
+                let parent_path = path.parent().unwrap_or(&path).display().to_string();
+                // 文件夹名
+                let folder_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                
+                // 显示用：父目录名/文件夹名（两级）
+                let parent_name = std::path::Path::new(&parent_path).file_name().unwrap_or_default().to_string_lossy();
+                let display_path = if parent_name.is_empty() {
+                    folder_name.clone()
+                } else {
+                    format!("{}/{}", parent_name, folder_name)
+                };
+                
                 let folders = app.global::<ui::PricingPageAdapter>().get_folders();
                 let mut new_folders: Vec<slint::SharedString> = folders.iter().collect();
-                new_folders.push(path_str.into());
+                new_folders.push(display_path.into());
                 app.global::<ui::PricingPageAdapter>().set_folders(new_folders.as_slice().into());
+                
+                // 保存父目录路径作为前缀
+                app.global::<ui::PricingPageAdapter>().set_folder_prefix(parent_path.into());
             }
         }
     });
@@ -170,11 +187,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             // 获取文件夹路径
             let folders = app.global::<ui::PricingPageAdapter>().get_folders();
-            if let Some(folder_path) = folders.iter().nth(index as usize) {
-                let path = std::path::PathBuf::from(folder_path.to_string());
+            let prefix = app.global::<ui::PricingPageAdapter>().get_folder_prefix().to_string();
+            if let Some(folder_display) = folders.iter().nth(index as usize) {
+                let display = folder_display.to_string();
+                // display 是 "parent/folder" 格式，提取 folder 名
+                let folder_name = display.split('/').last().unwrap_or(&display);
+                // 拼接完整路径：prefix + "/" + folder_name
+                let full_path = format!("{}/{}", prefix, folder_name);
+                let path = std::path::PathBuf::from(&full_path);
                 let image_files = image_manager::ImageManager::get_image_files_from_folder(&path);
                 
-                println!("Found {} images in folder", image_files.len());
+                println!("Found {} images in folder {}", image_files.len(), full_path);
                 let images: Vec<slint::SharedString> = image_files.into_iter().map(|s| s.into()).collect();
                 app.global::<ui::PricingPageAdapter>().set_images(images.as_slice().into());
                 
