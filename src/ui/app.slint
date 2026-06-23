@@ -21,8 +21,8 @@ export component PlanItem inherits Rectangle {
     callback delete-clicked();
     callback rename-clicked(string);
 
-    width: 140px;
-    height: 56px;
+    width: 120px;
+    height: 46px;
     border-radius: 8px;
     background: is-selected ? #e3f2fd : touch.has-hover ? #f5f5f5 : white;
     border-width: 2px;
@@ -103,6 +103,12 @@ export component PlanPage inherits Rectangle {
     in-out property <int> plan-id: 0;
     in-out property <string> plan-name: "";
 
+    // 修改这两项即可，列数自动计算
+    property <length> card-width: 120px;
+    property <length> list-width: 620px;
+    property <length> card-spacing: 12px;
+    property <int> plan-columns: list-width / (card-width + card-spacing);
+
     VerticalLayout {
         alignment: start;
         padding: 0;
@@ -122,7 +128,7 @@ export component PlanPage inherits Rectangle {
 
             new-plan-input := LineEdit {
                 placeholder-text: "输入新计划名称...";
-                horizontal-stretch: 1;
+                width: 300px;
                 accepted(text) => {
                     if text != "" {
                         PlanPageAdapter.create-plan(text);
@@ -142,20 +148,16 @@ export component PlanPage inherits Rectangle {
                 }
             }
 
-            // 占位矩形：确保输入框宽度不随计划卡片数量变化
-            // 宽度 = 4卡片宽度(140*4) + 间距(12*3) - 按钮(60) - 间距(8) = 528px
             Rectangle {
-                width: 520px;
+                horizontal-stretch: 1;
                 background: transparent;
             }
         }
 
         Rectangle {
             vertical-stretch: 1;
-            // 最小高度：4行计划卡片 (56px*4 + 间距12px*3) + 内边距12px*2 + 标题24px + 间距8px = 316px
+            horizontal-stretch: 1;
             min-height: 316px;
-            // 宽度 = 4卡片(140*4) + 间距(12*3) + 左右padding(12*2) = 620px
-            width: 620px;
             background: #fafafa;
             border-radius: 8px;
             border-width: 1px;
@@ -179,8 +181,8 @@ export component PlanPage inherits Rectangle {
                     spacing: 12px;
 
                     for plan[i] in PlanPageAdapter.plans: PlanItem {
-                        row: i / 4;
-                        col: mod(i, 4);
+                        row: i / plan-columns;
+                        col: mod(i, plan-columns);
                         plan-id: plan.id;
                         plan-name: plan.name;
                         is-selected: plan.id == root.plan-id;
