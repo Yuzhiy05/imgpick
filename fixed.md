@@ -345,7 +345,7 @@ export component App inherits Window {
 **解决方案**: 
 1. 主内容区域Rectangle设置`width: 100%`
 2. PricingPage内部VerticalLayout设置`padding: 0`
-3. 图片显示区域和文件夹列表使用比例布局（7:3）
+3. 图片显示区域和文件夹列表使用比例布局（8:2）
 
 ```slint
 // 主内容区域
@@ -369,9 +369,91 @@ VerticalLayout {
     Rectangle {
         HorizontalLayout {
             spacing: 20px;
-            Rectangle { horizontal-stretch: 7; ... }  // 图片显示区域70%
-            Rectangle { horizontal-stretch: 3; ... }  // 文件夹列表30%
+            Rectangle { horizontal-stretch: 8; ... }  // 图片显示区域80%
+            Rectangle { horizontal-stretch: 2; ... }  // 文件夹列表20%
         }
     }
 }
+```
+
+---
+
+## 17. Slint GridLayout循环依赖问题
+
+**问题描述**: 尝试用容器实际宽度动态计算GridLayout列数时，产生循环依赖错误。
+
+**原因**: GridLayout的preferred-width依赖列数，列数又依赖容器宽度，形成循环。
+
+**解决方案**: 在Rust端根据窗口宽度计算列数，传给UI。
+
+```rust
+// main.rs
+let card_width = 120;
+let card_spacing = 12;
+let plan_columns = 1000 / (card_width + card_spacing);
+app.global::<PlanPageAdapter>().set_plan_columns(plan_columns as i32);
+```
+
+```slint
+// app.slint
+export global PlanPageAdapter {
+    in-out property <int> plan-columns: 6;
+}
+
+// 使用
+GridLayout {
+    for plan[i] in PlanPageAdapter.plans: PlanItem {
+        row: i / PlanPageAdapter.plan-columns;
+        col: mod(i, PlanPageAdapter.plan-columns);
+    }
+}
+```
+
+---
+
+## 18. Slint种类按钮点击无动画效果
+
+**问题描述**: 种类按钮（血型/抗筛/交叉配血）点击时没有hover动画，但回调确实被触发。
+
+**原因**: 使用匿名Rectangle+TouchArea时，没有给TouchArea命名，无法引用has-hover状态。
+
+**解决方案**: 给TouchArea命名，在border-color和background中引用has-hover。
+
+```slint
+// 错误：匿名TouchArea
+Rectangle {
+    TouchArea { clicked => { ... } }
+}
+
+// 正确：命名TouchArea
+blood-touch := Rectangle {
+    border-color: blood-touch.has-hover ? #90caf9 : #bdbdbd;
+    background: blood-touch.has-hover ? #f5f5f5 : white;
+    TouchArea { clicked => { ... } }
+}
+```
+
+---
+
+## 19. 文件夹路径拼接错误
+
+**问题描述**: 选择文件夹列表项后，拼接的路径包含重复的目录名，如 `prefix/parent/folder` 而非 `prefix/folder`。
+
+**原因**: 选文件夹时保存了完整路径作为前缀，但列表项显示格式是 `parent/folder`，拼接时直接拼了完整display字符串。
+
+**解决方案**: 
+1. 选文件夹时保存父目录路径作为前缀
+2. 列表项显示 `parent/folder` 格式
+3. 选择列表项时提取 `folder` 名，用 `prefix + "/" + folder_name` 拼接
+
+```rust
+// 选择文件夹时
+let parent_path = path.parent().unwrap().display().to_string();
+let folder_name = path.file_name().to_string_lossy().to_string();
+let display_path = format!("{}/{}", parent_name, folder_name);
+app.global().set_folder_prefix(parent_path.into());
+
+// 选择列表项时
+let folder_name = display.split('/').last().unwrap();
+let full_path = format!("{}/{}", prefix, folder_name);
 ```
