@@ -460,7 +460,7 @@ export component PricingCategoryItem inherits Rectangle {
     callback toggle-clicked();
     callback image-clicked(int);
 
-    height: expanded ? (22px + images.length * 20px) : 22px;
+    height: expanded ? (22px + image-count * 20px) : 22px;
     background: is-selected ? #e3f2fd : #fafafa;
     border-radius: 3px;
 
@@ -514,10 +514,10 @@ export component PricingCategoryItem inherits Rectangle {
             padding-left: 16px;
             padding-right: 4px;
             padding-bottom: 2px;
-            spacing: 1px;
+            spacing: 0px;
 
             for image[i] in images: Rectangle {
-                height: 18px;
+                height: 20px;
                 background: image-touch.has-hover ? #e8e8e8 : transparent;
                 border-radius: 2px;
 
