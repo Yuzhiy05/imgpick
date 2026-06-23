@@ -860,3 +860,59 @@ app.global::<ui::PricingPageAdapter>().on_clear_all_priced(move |plan_id| {
 2. 只删除图片文件（jpg, jpeg, png, gif, bmp, webp），不影响其他文件
 3. 删除后需要刷新分类和进度显示
 4. 使用 `format!` 宏生成状态消息
+
+---
+
+## 35. 确认标价后展开状态和高亮消失
+
+**问题描述**: 点击确认标价成功后，展开的图片源会收缩，当前图片的高亮也消除了。
+
+**原因**: 
+1. `load_categories_for_plan` 函数总是将 `expanded` 设置为 `false`
+2. `on_confirm_pricing` 回调中调用 `set_current_image_index(-1)` 重置了高亮索引
+
+**解决方案**: 
+1. 添加 `refresh_categories_for_plan` 函数，刷新时保持原有的展开状态
+2. 修改 `on_confirm_pricing` 和 `on_skip_image` 回调，不重置高亮索引
+
+```rust
+fn refresh_categories_for_plan(base_dir: &Path, plan_name: &str, current_categories: &[ui::ImageCategoryData]) -> Vec<ui::ImageCategoryData> {
+    let plan_dir = base_dir.join("plans").join(plan_name);
+    let categories = vec![
+        ("src", "图片源"),
+        ("pend", "待标价"),
+        ("priced", "已标价"),
+        ("proc", "待处理"),
+    ];
+    
+    let mut result = Vec::new();
+    for (i, (folder_name, display_name)) in categories.iter().enumerate() {
+        let folder_path = plan_dir.join(folder_name);
+        let images = if folder_path.exists() {
+            scan_folder_images(&folder_path)
+        } else {
+            Vec::new()
+        };
+        let count = images.len();
+        
+        // 保持原有的展开状态
+        let expanded = current_categories.get(i)
+            .map(|cat| cat.expanded)
+            .unwrap_or(false);
+        
+        result.push(ui::ImageCategoryData {
+            name: (*folder_name).into(),
+            display_name: (*display_name).into(),
+            count: count as i32,
+            expanded,
+            images: images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+        });
+    }
+    result
+}
+```
+
+**关键点**:
+1. 刷新分类数据时，需要从当前模型中读取展开状态
+2. 不要重置高亮索引，保持当前操作状态
+3. 使用 `refresh_categories_for_plan` 替代 `load_categories_for_plan`
