@@ -540,10 +540,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Ok(img) = slint::Image::load_from_path(&path) {
                         app.global::<ui::ManagePageAdapter>().set_selected_image_data(img.clone());
                         
-                        // 待标价图片点击：加载到标价区域继续标价
+                        // 加载到标价区显示（所有分类都加载，不只是pend）
+                        app.global::<ui::PricingPageAdapter>().set_current_image_path(path.display().to_string().into());
+                        app.global::<ui::PricingPageAdapter>().set_current_image(img);
                         if cat_name == "pend" {
-                            app.global::<ui::PricingPageAdapter>().set_current_image_path(path.display().to_string().into());
-                            app.global::<ui::PricingPageAdapter>().set_current_image(img);
                             app.global::<ui::PricingPageAdapter>().invoke_clear_slots();
                         }
                     }
