@@ -916,3 +916,43 @@ fn refresh_categories_for_plan(base_dir: &Path, plan_name: &str, current_categor
 1. 刷新分类数据时，需要从当前模型中读取展开状态
 2. 不要重置高亮索引，保持当前操作状态
 3. 使用 `refresh_categories_for_plan` 替代 `load_categories_for_plan`
+
+---
+
+## 36. 标价失败提示和成功后自动跳转
+
+**问题描述**: 
+1. 标价失败时没有提示用户失败原因
+2. 确认标价成功后需要手动点击下一张图片
+
+**解决方案**: 
+1. 标价失败时使用 `status_message` 显示失败原因
+2. 确认标价成功后自动调用 `invoke_next_image()` 跳转到下一张图片
+
+```rust
+// 确认标价回调
+match image_manager.save_priced(...) {
+    Ok(id) => {
+        app.global::<ui::PricingPageAdapter>().set_status_message("标价成功".into());
+        
+        // 刷新分类数据
+        if let Ok(Some(plan)) = db_clone.get_plan(plan_id as i64) {
+            let current_categories: Vec<ui::ImageCategoryData> = categories_model_clone.iter().collect();
+            let cats = refresh_categories_for_plan(&base_dir_clone, &plan.name, &current_categories);
+            update_pricing_progress(&app, &cats);
+            categories_model_clone.set_vec(cats);
+        }
+        
+        // 自动跳转到下一张图片
+        app.global::<ui::PricingPageAdapter>().invoke_next_image();
+    }
+    Err(e) => {
+        app.global::<ui::PricingPageAdapter>().set_status_message(format!("标价失败: {}", e).into());
+    }
+}
+```
+
+**关键点**:
+1. 使用 `format!` 宏将错误信息格式化为用户友好的提示
+2. 复用 `invoke_next_image()` 方法实现自动跳转
+3. 在跳转前先刷新分类数据，确保图片列表是最新的
