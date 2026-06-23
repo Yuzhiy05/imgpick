@@ -500,7 +500,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             match image_manager.save_priced(plan_id as i64, &path.to_string(), &price.to_string(), &price.to_string(), db_type) {
                 Ok(id) => {
                     println!("Priced image saved, id={}", id);
-                    app.global::<ui::PricingPageAdapter>().invoke_clear_slots();
                     app.global::<ui::PricingPageAdapter>().set_status_message("标价成功".into());
                     
                     if let Ok(Some(plan)) = db_clone.get_plan(plan_id as i64) {
@@ -509,10 +508,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let cats = refresh_categories_for_plan(&base_dir_clone, &plan.name, &current_categories);
                         update_pricing_progress(&app, &cats);
                         categories_model_clone.set_vec(cats);
-                        // 不重置高亮索引，保持当前操作状态
                     }
+                    
+                    // 自动跳转到下一张图片
+                    app.global::<ui::PricingPageAdapter>().invoke_next_image();
                 }
-                Err(e) => eprintln!("Failed to save pricing: {}", e),
+                Err(e) => {
+                    eprintln!("Failed to save pricing: {}", e);
+                    app.global::<ui::PricingPageAdapter>().set_status_message(format!("标价失败: {}", e).into());
+                }
             }
         }
     });
