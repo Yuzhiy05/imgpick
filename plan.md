@@ -118,10 +118,228 @@ imgpick/
    - folder-prefix保存父目录路径
    - 选择列表项时用prefix+folder_name拼接完整路径加载图片
 
-### 阶段5: 图片管理
-1. 实现四种分类视图切换
-2. 实现逻辑分组功能
-3. 实现图片名修改页面
+### 阶段5: 图片管理 ✅
+1. ✅ 实现四种分类视图切换
+2. ⬜ 实现逻辑分组功能
+3. ⬜ 实现图片名修改页面
+4. ✅ 新增图片文件集合列表（右侧可展开面板）
+5. ✅ 创建计划时自动创建英文文件夹结构
+6. ✅ 图片管理显示基于文件夹作为源
+
+#### 5.1 文件夹名称修改（中文→英文）
+
+**修改映射：**
+```
+source → src
+pending → pend  
+priced → priced（保持）
+processing → proc
+```
+
+**修改位置：**
+- `src/models/image.rs` - `ImageCategory::as_str()` 和 `from_str()` 方法
+- `src/utils/file_utils.rs` - `create_directory_structure` 函数
+
+**注意事项：**
+- 使用英文文件夹名避免中文路径冲突
+- 保持数据库中的category字段不变（仍为source/pending/priced/processing）
+
+#### 5.2 创建计划时自动创建文件夹结构
+
+**修改位置：**
+- `src/plan_manager.rs` - `create_plan` 函数
+
+**逻辑：**
+1. 创建计划时，在 `./plans/` 目录下创建以计划名命名的文件夹
+2. 在计划文件夹下自动创建4个子文件夹：`src`、`pend`、`priced`、`proc`
+3. 文件夹创建失败时返回错误，不影响数据库记录
+
+**示例结构：**
+```
+./plans/
+└── 测试计划/
+    ├── src/      (图片源)
+    ├── pend/     (待标价)
+    ├── priced/   (已标价)
+    └── proc/     (待处理)
+```
+
+#### 5.3 ManagePage UI布局改造
+
+**修改位置：**
+- `src/ui/app.slint` - `ManagePage` 组件
+
+**新布局：**
+```
++-----------------------------------------------+
+| 图片管理                                      |
++-----------------------------------------------+
+| [图片源] [待标价] [已标价] [待处理]            |
++-----------------------------------------------+
+| 图片显示区域      | 图片文件集合               |
+|                   | ▼ 图片源 (5)              |
+|                   |   image1.jpg              |
+|                   |   image2.jpg              |
+|                   | ▶ 待标价 (3)              |
+|                   | ▶ 已标价 (10)             |
+|                   | ▶ 待处理 (2)              |
++-----------------------------------------------+
+```
+
+**新增Slint组件：**
+```slint
+// 图片分类项组件（可展开）
+export component ImageCategoryItem inherits Rectangle {
+    in-out property <string> category-name: "";
+    in-out property <int> image-count: 0;
+    in-out property <bool> expanded: false;
+    in-out property <[string]> images: [];
+    
+    callback toggle-clicked();
+    callback image-clicked(int);
+}
+
+// 图片管理页面适配器（全局单例）
+export global ManagePageAdapter {
+    in-out property <[ImageCategoryData]> categories: [];
+    in-out property <[string]> current-images: [];
+    in-out property <int> selected-category: -1;
+    in-out property <string> base-path: "";
+    
+    callback load-categories(int);
+    callback toggle-category(int);
+    callback select-category(int);
+}
+
+// 图片分类数据结构
+export struct ImageCategoryData {
+    name: string,
+    count: int,
+    expanded: bool,
+    images: [string],
+}
+```
+
+**注意事项：**
+- 使用 `export` 关键字导出组件（fixed.md问题1）
+- 使用 `font-weight: 700` 而非 `bold`（fixed.md问题2）
+- 使用命名 `TouchArea` 引用 `has-hover` 状态（fixed.md问题18）
+- 使用 `if` 条件守卫避免空模型崩溃（fixed.md问题12）
+
+#### 5.4 Rust端回调实现
+
+**修改位置：**
+- `src/main.rs` - 添加ManagePage相关回调
+
+**新增回调：**
+```rust
+// 加载计划的分类数据
+app.global::<ui::ManagePageAdapter>().on_load_categories(move |plan_id| {
+    // 从文件系统读取各分类文件夹的图片数量
+    // 返回 [ImageCategoryData] 结构
+});
+
+// 切换分类展开状态
+app.global::<ui::ManagePageAdapter>().on_toggle_category(move |index| {
+    // 更新categories[index].expanded状态
+});
+
+// 选择分类并加载图片列表
+app.global::<ui::ManagePageAdapter>().on_select_category(move |index| {
+    // 读取对应分类文件夹的图片列表
+    // 更新current-images属性
+});
+```
+
+**图片扫描逻辑：**
+```rust
+use std::fs;
+use std::path::Path;
+
+fn scan_folder_images(folder_path: &Path) -> Vec<String> {
+    let mut images = Vec::new();
+    if let Ok(entries) = fs::read_dir(folder_path) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(ext) = path.extension() {
+                    let ext_str = ext.to_string_lossy().to_lowercase();
+                    if ["jpg", "jpeg", "png", "gif", "bmp", "webp"].contains(&ext_str.as_str()) {
+                        if let Some(name) = path.file_name() {
+                            images.push(name.to_string_lossy().to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    images.sort();
+    images
+}
+```
+
+#### 5.5 图片管理器增强
+
+**修改位置：**
+- `src/image_manager.rs` - 添加文件夹扫描功能
+
+**新增方法：**
+```rust
+impl ImageManager {
+    // 获取计划文件夹路径
+    pub fn get_plan_folder_path(&self, plan_id: i64) -> PathBuf {
+        let plan = self.db.get_plan(plan_id).unwrap().unwrap();
+        self.base_dir.join("plans").join(&plan.name)
+    }
+    
+    // 扫描指定分类文件夹的图片
+    pub fn scan_category_images(&self, plan_id: i64, category: ImageCategory) -> Vec<String> {
+        let plan_path = self.get_plan_folder_path(plan_id);
+        let folder_name = match category {
+            ImageCategory::Source => "src",
+            ImageCategory::Pending => "pend",
+            ImageCategory::Priced => "priced",
+            ImageCategory::Processing => "proc",
+        };
+        let folder_path = plan_path.join(folder_name);
+        scan_folder_images(&folder_path)
+    }
+    
+    // 获取所有分类的图片统计
+    pub fn get_category_stats(&self, plan_id: i64) -> HashMap<String, usize> {
+        let mut stats = HashMap::new();
+        for category in [ImageCategory::Source, ImageCategory::Pending, ImageCategory::Priced, ImageCategory::Processing] {
+            let images = self.scan_category_images(plan_id, category.clone());
+            stats.insert(category.as_str().to_string(), images.len());
+        }
+        stats
+    }
+}
+```
+
+### 实施顺序
+
+**阶段1：基础架构（预计1小时）**
+1. 修改 `ImageCategory` 枚举的字符串映射
+2. 更新 `file_utils.rs` 中的文件夹名称
+3. 修改 `plan_manager.rs` 添加自动创建文件夹逻辑
+
+**阶段2：UI组件（预计2小时）**
+1. 在 `app.slint` 中添加 `ImageCategoryItem` 组件
+2. 添加 `ManagePageAdapter` 全局适配器
+3. 重新设计 `ManagePage` 布局
+
+**阶段3：Rust回调（预计1.5小时）**
+1. 在 `main.rs` 中添加ManagePage回调
+2. 实现文件系统扫描逻辑
+3. 实现图片列表加载
+
+**阶段4：测试验证（预计0.5小时）**
+1. 测试创建计划时文件夹创建
+2. 测试图片分类显示
+3. 测试展开/折叠功能
+
+**总预计时间：5小时**
 
 ### 阶段6: Excel集成
 1. 实现Excel文件读取和解析
@@ -132,7 +350,7 @@ imgpick/
 ## 关键功能详解
 
 ### 图片编号输入
-- 8个位置，每个位置可选: '4+','3+','2+','1+/+','-','?','M'
+- 8个位置，每个位置可选: '4+','3+','2+','+','-','?','M'
 - 三种有效组合:
   - A: 8位全填
   - B: 仅前3位有值
