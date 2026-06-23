@@ -30,6 +30,7 @@ CREATE TABLE images (
     group_name TEXT,
     special_code TEXT, -- 8位特殊编号
     price TEXT, -- 价位
+    project_type TEXT CHECK(project_type IS NULL OR project_type IN ('Abo', 'AS', 'CM')), -- 种类：Abo(血型), AS(抗筛), CM(交叉配血)
     sample_id TEXT, -- Excel配对用
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (plan_id) REFERENCES plans(id)
@@ -106,6 +107,10 @@ imgpick/
 2. ⬜ 实现图片复制和分类管理
 3. ✅ 实现编号输入界面（8位按钮输入）
 4. ⬜ 实现待处理图片确认流程
+5. ✅ 实现图片种类标注（血型/抗筛/交叉配血）
+   - 三个种类按钮：血型(Abo)、抗筛(AS)、交叉配血(CM)
+   - 文件夹列表上方显示当前种类卡片
+   - 确认标价时种类一并写入数据库 project_type 列
 
 ### 阶段5: 图片管理
 1. 实现四种分类视图切换
@@ -127,6 +132,12 @@ imgpick/
   - B: 仅前3位有值
   - C: 仅前2位有值
 - 其他情况报错
+
+### 图片种类标注
+- 三种种类：血型、抗筛、交叉配血
+- 数据库存储值：血型->Abo, 抗筛->AS, 交叉配血->CM
+- 数据库列名：project_type
+- 未选择种类时无法确认标价
 
 ### 图片分类逻辑
 - 源图(source): 只读，从文件夹导入
