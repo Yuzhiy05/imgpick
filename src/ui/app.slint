@@ -384,6 +384,70 @@ export global PricingPageAdapter {
     callback clear-status();  // 清除状态消息
     callback clear-all-priced(int);  // 清除所有已标价图片
     
+    // 验证输入组合是否有效
+    // 返回: "" 表示有效，非空表示错误信息
+    pure function validate-input-combo() -> string {
+        let has1 = slot1 != "";
+        let has2 = slot2 != "";
+        let has3 = slot3 != "";
+        let has4 = slot4 != "";
+        let has5 = slot5 != "";
+        let has6 = slot6 != "";
+        let has7 = slot7 != "";
+        let has8 = slot8 != "";
+        
+        // A: 8位全填
+        if has1 && has2 && has3 && has4 && has5 && has6 && has7 && has8 {
+            return "";
+        }
+        // B: 仅前3位有值
+        if has1 && has2 && has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+            return "";
+        }
+        // C: 仅前2位有值
+        if has1 && has2 && !has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+            return "";
+        }
+        // 其他情况
+        return "无效的输入组合";
+    }
+    
+    // 检查输入组合与种类是否匹配
+    // 返回: "" 表示匹配，非空表示错误信息
+    pure function validate-type-combo() -> string {
+        let has1 = slot1 != "";
+        let has2 = slot2 != "";
+        let has3 = slot3 != "";
+        let has4 = slot4 != "";
+        let has5 = slot5 != "";
+        let has6 = slot6 != "";
+        let has7 = slot7 != "";
+        let has8 = slot8 != "";
+        
+        // A: 8位全填 -> 血型
+        if has1 && has2 && has3 && has4 && has5 && has6 && has7 && has8 {
+            if project-type != "blood" {
+                return "8位输入需选择血型";
+            }
+            return "";
+        }
+        // B: 仅前3位有值 -> 交叉配血
+        if has1 && has2 && has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+            if project-type != "crossmatch" {
+                return "3位输入需选择交叉配血";
+            }
+            return "";
+        }
+        // C: 仅前2位有值 -> 抗筛
+        if has1 && has2 && !has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+            if project-type != "antibody" {
+                return "2位输入需选择抗筛";
+            }
+            return "";
+        }
+        return "无效的输入组合";
+    }
+    
     // 输入价位函数
     input-code(code) => {
         if current-slot == 0 {
@@ -840,15 +904,66 @@ export component PricingPage inherits Rectangle {
             height: 30px;
 
             blood-btn := Rectangle { width: 50px; height: 30px; border-radius: 4px; border-width: 1px; border-color: PricingPageAdapter.project-type == "blood" ? #1976D2 : blood-touch.has-hover ? #90caf9 : #bdbdbd; background: PricingPageAdapter.project-type == "blood" ? #e3f2fd : blood-touch.has-hover ? #f5f5f5 : white;
-                blood-touch := TouchArea { clicked => { PricingPageAdapter.set-project-type("blood"); } }
+                blood-touch := TouchArea { clicked => { 
+                    // 检查当前输入是否允许选择血型（需要8位输入）
+                    let has1 = PricingPageAdapter.slot1 != "";
+                    let has2 = PricingPageAdapter.slot2 != "";
+                    let has3 = PricingPageAdapter.slot3 != "";
+                    let has4 = PricingPageAdapter.slot4 != "";
+                    let has5 = PricingPageAdapter.slot5 != "";
+                    let has6 = PricingPageAdapter.slot6 != "";
+                    let has7 = PricingPageAdapter.slot7 != "";
+                    let has8 = PricingPageAdapter.slot8 != "";
+                    if has1 && has2 && has3 && has4 && has5 && has6 && has7 && has8 {
+                        PricingPageAdapter.set-project-type("blood");
+                    } else if !has1 && !has2 && !has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+                        PricingPageAdapter.set-project-type("blood");
+                    } else {
+                        PricingPageAdapter.status-message = "血型需要8位输入";
+                    }
+                } }
                 Text { text: "血型"; horizontal-alignment: center; vertical-alignment: center; color: PricingPageAdapter.project-type == "blood" ? #1976D2 : #333; }
             }
             antibody-btn := Rectangle { width: 50px; height: 30px; border-radius: 4px; border-width: 1px; border-color: PricingPageAdapter.project-type == "antibody" ? #1976D2 : antibody-touch.has-hover ? #90caf9 : #bdbdbd; background: PricingPageAdapter.project-type == "antibody" ? #e3f2fd : antibody-touch.has-hover ? #f5f5f5 : white;
-                antibody-touch := TouchArea { clicked => { PricingPageAdapter.set-project-type("antibody"); } }
+                antibody-touch := TouchArea { clicked => { 
+                    // 检查当前输入是否允许选择抗筛（需要2位输入）
+                    let has1 = PricingPageAdapter.slot1 != "";
+                    let has2 = PricingPageAdapter.slot2 != "";
+                    let has3 = PricingPageAdapter.slot3 != "";
+                    let has4 = PricingPageAdapter.slot4 != "";
+                    let has5 = PricingPageAdapter.slot5 != "";
+                    let has6 = PricingPageAdapter.slot6 != "";
+                    let has7 = PricingPageAdapter.slot7 != "";
+                    let has8 = PricingPageAdapter.slot8 != "";
+                    if has1 && has2 && !has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+                        PricingPageAdapter.set-project-type("antibody");
+                    } else if !has1 && !has2 && !has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+                        PricingPageAdapter.set-project-type("antibody");
+                    } else {
+                        PricingPageAdapter.status-message = "抗筛需要2位输入";
+                    }
+                } }
                 Text { text: "抗筛"; horizontal-alignment: center; vertical-alignment: center; color: PricingPageAdapter.project-type == "antibody" ? #1976D2 : #333; }
             }
             crossmatch-btn := Rectangle { width: 70px; height: 30px; border-radius: 4px; border-width: 1px; border-color: PricingPageAdapter.project-type == "crossmatch" ? #1976D2 : crossmatch-touch.has-hover ? #90caf9 : #bdbdbd; background: PricingPageAdapter.project-type == "crossmatch" ? #e3f2fd : crossmatch-touch.has-hover ? #f5f5f5 : white;
-                crossmatch-touch := TouchArea { clicked => { PricingPageAdapter.set-project-type("crossmatch"); } }
+                crossmatch-touch := TouchArea { clicked => { 
+                    // 检查当前输入是否允许选择交叉配血（需要3位输入）
+                    let has1 = PricingPageAdapter.slot1 != "";
+                    let has2 = PricingPageAdapter.slot2 != "";
+                    let has3 = PricingPageAdapter.slot3 != "";
+                    let has4 = PricingPageAdapter.slot4 != "";
+                    let has5 = PricingPageAdapter.slot5 != "";
+                    let has6 = PricingPageAdapter.slot6 != "";
+                    let has7 = PricingPageAdapter.slot7 != "";
+                    let has8 = PricingPageAdapter.slot8 != "";
+                    if has1 && has2 && has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+                        PricingPageAdapter.set-project-type("crossmatch");
+                    } else if !has1 && !has2 && !has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+                        PricingPageAdapter.set-project-type("crossmatch");
+                    } else {
+                        PricingPageAdapter.status-message = "交叉配血需要3位输入";
+                    }
+                } }
                 Text { text: "交叉配血"; horizontal-alignment: center; vertical-alignment: center; color: PricingPageAdapter.project-type == "crossmatch" ? #1976D2 : #333; }
             }
         }
@@ -877,7 +992,19 @@ export component PricingPage inherits Rectangle {
                 clicked => {
                     let price = PricingPageAdapter.slot1 + PricingPageAdapter.slot2 + PricingPageAdapter.slot3 + PricingPageAdapter.slot4 + PricingPageAdapter.slot5 + PricingPageAdapter.slot6 + PricingPageAdapter.slot7 + PricingPageAdapter.slot8;
                     if price != "" && PricingPageAdapter.current-image-path != "" && PricingPageAdapter.project-type != "" {
-                        PricingPageAdapter.confirm-pricing(PricingPageAdapter.plan-id, PricingPageAdapter.current-image-path, PricingPageAdapter.current-image-path, price, PricingPageAdapter.project-type);
+                        // 验证输入组合
+                        let combo-error = PricingPageAdapter.validate-input-combo();
+                        if combo-error != "" {
+                            PricingPageAdapter.status-message = combo-error;
+                        } else {
+                            // 验证种类与输入匹配
+                            let type-error = PricingPageAdapter.validate-type-combo();
+                            if type-error != "" {
+                                PricingPageAdapter.status-message = type-error;
+                            } else {
+                                PricingPageAdapter.confirm-pricing(PricingPageAdapter.plan-id, PricingPageAdapter.current-image-path, PricingPageAdapter.current-image-path, price, PricingPageAdapter.project-type);
+                            }
+                        }
                     }
                 }
             }
