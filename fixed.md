@@ -955,4 +955,51 @@ match image_manager.save_priced(...) {
 **关键点**:
 1. 使用 `format!` 宏将错误信息格式化为用户友好的提示
 2. 复用 `invoke_next_image()` 方法实现自动跳转
-3. 在跳转前先刷新分类数据，确保图片列表是最新的
+3. 在跳转前先刷新分类数据，确保图片列表是最最新的
+
+**问题**: 使用 `invoke_next_image()` 会导致索引不同步，图片显示不正确。
+
+**修复**: 手动实现跳转逻辑，在刷新分类数据前获取当前索引。
+
+```rust
+// 获取当前索引（在刷新前）
+let current_index = app.global::<ui::PricingPageAdapter>().get_current_image_index();
+let images = app.global::<ui::PricingPageAdapter>().get_images();
+let next_index = current_index + 1;
+
+// 刷新分类数据
+if let Ok(Some(plan)) = db_clone.get_plan(plan_id as i64) {
+    let current_categories: Vec<ui::ImageCategoryData> = categories_model_clone.iter().collect();
+    let cats = refresh_categories_for_plan(&base_dir_clone, &plan.name, &current_categories);
+    update_pricing_progress(&app, &cats);
+    categories_model_clone.set_vec(cats);
+}
+
+// 手动实现跳转逻辑
+if next_index < images.iter().count() as i32 {
+    // 更新索引
+    app.global::<ui::PricingPageAdapter>().set_current_image_index(next_index);
+    app.global::<ui::ManagePageAdapter>().set_current_image_index(next_index);
+    
+    // 加载下一张图片
+    if let Some(file_name) = images.iter().nth(next_index as usize) {
+        let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
+        let cat_index = app.global::<ui::ManagePageAdapter>().get_current_category_index();
+        let categories = app.global::<ui::ManagePageAdapter>().get_categories();
+        
+        if let Some(category) = categories.iter().nth(cat_index as usize) {
+            let cat_name = category.name.to_string();
+            let full_path = base_dir_clone.join("plans").join(&plan_name).join(&cat_name).join(file_name.as_str());
+            let path_str = full_path.display().to_string();
+            
+            app.global::<ui::PricingPageAdapter>().set_current_image_path(path_str.clone().into());
+            
+            if let Ok(image) = slint::Image::load_from_path(&full_path) {
+                app.global::<ui::PricingPageAdapter>().set_current_image(image);
+            }
+        }
+    }
+    // 清空槽位
+    app.global::<ui::PricingPageAdapter>().invoke_clear_slots();
+}
+```
