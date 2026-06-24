@@ -502,6 +502,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("Priced image saved, id={}", id);
                     app.global::<ui::PricingPageAdapter>().set_status_message("标价成功".into());
                     
+                    // 获取当前索引（在刷新前）
+                    let current_index = app.global::<ui::PricingPageAdapter>().get_current_image_index();
+                    let images = app.global::<ui::PricingPageAdapter>().get_images();
+                    let next_index = current_index + 1;
+                    
                     if let Ok(Some(plan)) = db_clone.get_plan(plan_id as i64) {
                         // 获取当前展开状态，刷新时保持
                         let current_categories: Vec<ui::ImageCategoryData> = categories_model_clone.iter().collect();
@@ -511,7 +516,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     
                     // 自动跳转到下一张图片
-                    app.global::<ui::PricingPageAdapter>().invoke_next_image();
+                    if next_index < images.iter().count() as i32 {
+                        // 更新索引
+                        app.global::<ui::PricingPageAdapter>().set_current_image_index(next_index);
+                        app.global::<ui::ManagePageAdapter>().set_current_image_index(next_index);
+                        
+                        // 加载下一张图片
+                        if let Some(file_name) = images.iter().nth(next_index as usize) {
+                            let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
+                            let cat_index = app.global::<ui::ManagePageAdapter>().get_current_category_index();
+                            let categories = app.global::<ui::ManagePageAdapter>().get_categories();
+                            
+                            if let Some(category) = categories.iter().nth(cat_index as usize) {
+                                let cat_name = category.name.to_string();
+                                let full_path = base_dir_clone.join("plans").join(&plan_name).join(&cat_name).join(file_name.as_str());
+                                let path_str = full_path.display().to_string();
+                                
+                                app.global::<ui::PricingPageAdapter>().set_current_image_path(path_str.clone().into());
+                                
+                                if let Ok(image) = slint::Image::load_from_path(&full_path) {
+                                    app.global::<ui::PricingPageAdapter>().set_current_image(image);
+                                }
+                            }
+                        }
+                        // 清空槽位
+                        app.global::<ui::PricingPageAdapter>().invoke_clear_slots();
+                    }
                 }
                 Err(e) => {
                     eprintln!("Failed to save pricing: {}", e);
