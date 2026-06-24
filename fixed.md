@@ -1028,3 +1028,42 @@ if old_parent.as_deref() != Some("src") && old_path.exists() {
 1. 检查旧文件的父目录名是否为"src"
 2. 只删除非src目录的旧文件（如pend、priced目录）
 3. src目录下的源文件应该永久保留
+
+---
+
+## 38. 图片状态不唯一
+
+**问题描述**: 同一张图片可能同时存在于多个状态（如src和priced），导致图片源列表中仍然显示已标价的图片。
+
+**原因**: `save_priced` 和 `copy_to_pending` 方法在更新DB记录时，没有正确处理图片状态的唯一性。
+
+**解决方案**: 更新现有记录的状态，而不是创建新记录。
+
+```rust
+// save_priced方法
+match self.db.find_image_by_name(plan_id, &file_name) {
+    Ok(Some(existing)) => {
+        // 更新现有记录的状态为priced
+        // 不删除源文件，只更新DB记录
+        self.db.update_image_status(
+            existing.id,
+            ImageCategory::Priced.as_str(),
+            &dest_path_str,
+            code.as_deref(),
+            price_val.as_deref(),
+            sample.as_deref(),
+        ).map_err(|e| format!("更新图片状态失败: {}", e))?;
+        existing.id
+    }
+    _ => {
+        // 新建DB记录
+        ...
+    }
+}
+```
+
+**关键点**:
+1. 使用 `find_image_by_name` 查找现有记录
+2. 如果找到现有记录，更新其状态，不创建新记录
+3. 保留源文件，只更新数据库记录
+4. 确保图片在同一时间只有一个状态
