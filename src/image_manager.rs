@@ -269,14 +269,8 @@ impl ImageManager {
 
         match self.db.find_image_by_name(plan_id, &file_name) {
             Ok(Some(existing)) => {
-                // 不删除源文件，只更新DB记录
-                // 源文件（src目录）应该保留，只删除非src目录的旧文件
-                let old_path = Path::new(&existing.file_path);
-                let old_parent = old_path.parent().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_string());
-                if old_parent.as_deref() != Some("src") && old_path.exists() {
-                    let _ = std::fs::remove_file(old_path);
-                }
-                // 更新DB记录
+                // 更新现有记录的状态为pending
+                // 不删除源文件
                 self.db.update_image_status(
                     existing.id,
                     ImageCategory::Pending.as_str(),
@@ -329,14 +323,8 @@ impl ImageManager {
 
         let id = match self.db.find_image_by_name(plan_id, &file_name) {
             Ok(Some(existing)) => {
+                // 更新现有记录的状态为priced
                 // 不删除源文件，只更新DB记录
-                // 源文件（src目录）应该保留，只删除非src目录的旧文件
-                let old_path = Path::new(&existing.file_path);
-                let old_parent = old_path.parent().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_string());
-                if old_parent.as_deref() != Some("src") && old_path.exists() {
-                    let _ = std::fs::remove_file(old_path);
-                }
-                // 更新DB记录
                 self.db.update_image_status(
                     existing.id,
                     ImageCategory::Priced.as_str(),
