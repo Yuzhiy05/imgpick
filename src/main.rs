@@ -94,12 +94,111 @@ fn load_categories_for_plan(base_dir: &Path, plan_name: &str) -> Vec<ui::ImageCa
     result
 }
 
+fn load_categories_for_plan_with_db(base_dir: &Path, plan_name: &str, db: &Database, plan_id: i64) -> Vec<ui::ImageCategoryData> {
+    let plan_dir = base_dir.join("plans").join(plan_name);
+    let categories = vec![
+        ("src", "图片源"),
+        ("pend", "待标价"),
+    ];
+    
+    let mut result = Vec::new();
+    for (folder_name, display_name) in categories {
+        let folder_path = plan_dir.join(folder_name);
+        let images = if folder_path.exists() {
+            scan_folder_images(&folder_path)
+        } else {
+            Vec::new()
+        };
+        let count = images.len();
+        result.push(ui::ImageCategoryData {
+            name: folder_name.into(),
+            display_name: display_name.into(),
+            count: count as i32,
+            expanded: false,
+            images: images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+        });
+    }
+    
+    // 已标价图片按项目类型分组
+    let priced_images = db.get_images_by_category(plan_id, models::ImageCategory::Priced).unwrap_or_default();
+    let mut abo_images = Vec::new();
+    let mut as_images = Vec::new();
+    let mut cm_images = Vec::new();
+    
+    for img in &priced_images {
+        match img.sample_id.as_deref() {
+            Some("Abo") => abo_images.push(img.file_name.clone()),
+            Some("AS") => as_images.push(img.file_name.clone()),
+            Some("CM") => cm_images.push(img.file_name.clone()),
+            _ => abo_images.push(img.file_name.clone()), // 默认归类为血型
+        }
+    }
+    
+    abo_images.sort();
+    as_images.sort();
+    cm_images.sort();
+    
+    // 添加已标价父分类（包含所有已标价图片）
+    let all_priced_names: Vec<String> = priced_images.iter().map(|img| img.file_name.clone()).collect();
+    result.push(ui::ImageCategoryData {
+        name: "priced".into(),
+        display_name: format!("已标价 ({})", priced_images.len()).into(),
+        count: priced_images.len() as i32,
+        expanded: false,
+        images: all_priced_names.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+    });
+    
+    // 添加血型子分类
+    result.push(ui::ImageCategoryData {
+        name: "priced_abo".into(),
+        display_name: format!("  血型 ({})", abo_images.len()).into(),
+        count: abo_images.len() as i32,
+        expanded: false,
+        images: abo_images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+    });
+    
+    // 添加抗筛子分类
+    result.push(ui::ImageCategoryData {
+        name: "priced_as".into(),
+        display_name: format!("  抗筛 ({})", as_images.len()).into(),
+        count: as_images.len() as i32,
+        expanded: false,
+        images: as_images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+    });
+    
+    // 添加交叉配血子分类
+    result.push(ui::ImageCategoryData {
+        name: "priced_cm".into(),
+        display_name: format!("  交叉配血 ({})", cm_images.len()).into(),
+        count: cm_images.len() as i32,
+        expanded: false,
+        images: cm_images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+    });
+    
+    // 添加待处理分类
+    let proc_dir = plan_dir.join("proc");
+    let proc_images = if proc_dir.exists() {
+        scan_folder_images(&proc_dir)
+    } else {
+        Vec::new()
+    };
+    let proc_count = proc_images.len();
+    result.push(ui::ImageCategoryData {
+        name: "proc".into(),
+        display_name: "待处理".into(),
+        count: proc_count as i32,
+        expanded: false,
+        images: proc_images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+    });
+    
+    result
+}
+
 fn refresh_categories_for_plan(base_dir: &Path, plan_name: &str, current_categories: &[ui::ImageCategoryData]) -> Vec<ui::ImageCategoryData> {
     let plan_dir = base_dir.join("plans").join(plan_name);
     let categories = vec![
         ("src", "图片源"),
         ("pend", "待标价"),
-        ("priced", "已标价"),
         ("proc", "待处理"),
     ];
     
@@ -126,6 +225,136 @@ fn refresh_categories_for_plan(base_dir: &Path, plan_name: &str, current_categor
             images: images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
         });
     }
+    result
+}
+
+fn refresh_categories_for_plan_with_db(base_dir: &Path, plan_name: &str, current_categories: &[ui::ImageCategoryData], db: &Database, plan_id: i64) -> Vec<ui::ImageCategoryData> {
+    let plan_dir = base_dir.join("plans").join(plan_name);
+    let categories = vec![
+        ("src", "图片源"),
+        ("pend", "待标价"),
+    ];
+    
+    let mut result = Vec::new();
+    for (folder_name, display_name) in categories {
+        let folder_path = plan_dir.join(folder_name);
+        let images = if folder_path.exists() {
+            scan_folder_images(&folder_path)
+        } else {
+            Vec::new()
+        };
+        let count = images.len();
+        
+        // 保持原有的展开状态
+        let fname: &str = folder_name;
+        let expanded = current_categories.iter()
+            .find(|cat| cat.name.as_str() == fname)
+            .map(|cat| cat.expanded)
+            .unwrap_or(false);
+        
+        result.push(ui::ImageCategoryData {
+            name: (*folder_name).into(),
+            display_name: (*display_name).into(),
+            count: count as i32,
+            expanded,
+            images: images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+        });
+    }
+    
+    // 已标价图片按项目类型分组
+    let priced_images = db.get_images_by_category(plan_id, models::ImageCategory::Priced).unwrap_or_default();
+    let mut abo_images = Vec::new();
+    let mut as_images = Vec::new();
+    let mut cm_images = Vec::new();
+    
+    for img in &priced_images {
+        match img.sample_id.as_deref() {
+            Some("Abo") => abo_images.push(img.file_name.clone()),
+            Some("AS") => as_images.push(img.file_name.clone()),
+            Some("CM") => cm_images.push(img.file_name.clone()),
+            _ => abo_images.push(img.file_name.clone()), // 默认归类为血型
+        }
+    }
+    
+    abo_images.sort();
+    as_images.sort();
+    cm_images.sort();
+    
+    // 保持原有的展开状态
+    let priced_expanded = current_categories.iter()
+        .find(|cat| cat.name.as_str() == "priced")
+        .map(|cat| cat.expanded)
+        .unwrap_or(false);
+    let abo_expanded = current_categories.iter()
+        .find(|cat| cat.name.as_str() == "priced_abo")
+        .map(|cat| cat.expanded)
+        .unwrap_or(false);
+    let as_expanded = current_categories.iter()
+        .find(|cat| cat.name.as_str() == "priced_as")
+        .map(|cat| cat.expanded)
+        .unwrap_or(false);
+    let cm_expanded = current_categories.iter()
+        .find(|cat| cat.name.as_str() == "priced_cm")
+        .map(|cat| cat.expanded)
+        .unwrap_or(false);
+    
+    // 添加已标价父分类（包含所有已标价图片）
+    let all_priced_names: Vec<String> = priced_images.iter().map(|img| img.file_name.clone()).collect();
+    result.push(ui::ImageCategoryData {
+        name: "priced".into(),
+        display_name: format!("已标价 ({})", priced_images.len()).into(),
+        count: priced_images.len() as i32,
+        expanded: priced_expanded,
+        images: all_priced_names.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+    });
+    
+    // 添加血型子分类
+    result.push(ui::ImageCategoryData {
+        name: "priced_abo".into(),
+        display_name: format!("  血型 ({})", abo_images.len()).into(),
+        count: abo_images.len() as i32,
+        expanded: abo_expanded,
+        images: abo_images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+    });
+    
+    // 添加抗筛子分类
+    result.push(ui::ImageCategoryData {
+        name: "priced_as".into(),
+        display_name: format!("  抗筛 ({})", as_images.len()).into(),
+        count: as_images.len() as i32,
+        expanded: as_expanded,
+        images: as_images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+    });
+    
+    // 添加交叉配血子分类
+    result.push(ui::ImageCategoryData {
+        name: "priced_cm".into(),
+        display_name: format!("  交叉配血 ({})", cm_images.len()).into(),
+        count: cm_images.len() as i32,
+        expanded: cm_expanded,
+        images: cm_images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+    });
+    
+    // 添加待处理分类
+    let proc_dir = plan_dir.join("proc");
+    let proc_images = if proc_dir.exists() {
+        scan_folder_images(&proc_dir)
+    } else {
+        Vec::new()
+    };
+    let proc_count = proc_images.len();
+    let proc_expanded = current_categories.iter()
+        .find(|cat| cat.name.as_str() == "proc")
+        .map(|cat| cat.expanded)
+        .unwrap_or(false);
+    result.push(ui::ImageCategoryData {
+        name: "proc".into(),
+        display_name: "待处理".into(),
+        count: proc_count as i32,
+        expanded: proc_expanded,
+        images: proc_images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+    });
+    
     result
 }
 
@@ -174,7 +403,7 @@ fn update_pricing_progress(app: &ui::App, categories: &[ui::ImageCategoryData]) 
     for cat in categories {
         match cat.name.as_str() {
             "src" => src_count = cat.count,
-            "pend" | "priced" | "proc" => processed += cat.count,
+            "pend" | "priced" | "priced_abo" | "priced_as" | "priced_cm" | "proc" => processed += cat.count,
             _ => {}
         }
     }
@@ -280,7 +509,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     app.global::<ui::PricingPageAdapter>().set_plan_name(plan.name.clone().into());
                     app.global::<ui::ManagePageAdapter>().set_plan_name(plan.name.clone().into());
                     
-                    let cats = load_categories_for_plan(&base_dir_clone, &plan.name);
+                    let cats = load_categories_for_plan_with_db(&base_dir_clone, &plan.name, &db, id as i64);
                     update_pricing_progress(&app, &cats);
                     categories_model_clone.set_vec(cats);
                     app.global::<ui::ManagePageAdapter>().set_selected_category(-1);
@@ -510,7 +739,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Ok(Some(plan)) = db_clone.get_plan(plan_id as i64) {
                         // 获取当前展开状态，刷新时保持
                         let current_categories: Vec<ui::ImageCategoryData> = categories_model_clone.iter().collect();
-                        let cats = refresh_categories_for_plan(&base_dir_clone, &plan.name, &current_categories);
+                        let cats = refresh_categories_for_plan_with_db(&base_dir_clone, &plan.name, &current_categories, &db_clone, plan_id as i64);
                         update_pricing_progress(&app, &cats);
                         categories_model_clone.set_vec(cats);
                     }
@@ -570,7 +799,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Ok(Some(plan)) = db_clone.get_plan(plan_id as i64) {
                         // 获取当前展开状态，刷新时保持
                         let current_categories: Vec<ui::ImageCategoryData> = categories_model_clone.iter().collect();
-                        let cats = refresh_categories_for_plan(&base_dir_clone, &plan.name, &current_categories);
+                        let cats = refresh_categories_for_plan_with_db(&base_dir_clone, &plan.name, &current_categories, &db_clone, plan_id as i64);
                         update_pricing_progress(&app, &cats);
                         categories_model_clone.set_vec(cats);
                         // 不重置高亮索引，保持当前操作状态
@@ -698,9 +927,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let path_str = path.display().to_string();
                     app.global::<ui::ManagePageAdapter>().set_selected_image_path(path_str.clone().into());
                     
-                    // 加载图片到PricingPage显示
+                    // 加载图片到ManagePage显示
                     match slint::Image::load_from_path(&path) {
                         Ok(img) => {
+                            app.global::<ui::ManagePageAdapter>().set_selected_image_data(img.clone());
+                            // 同时加载到PricingPage显示
                             app.global::<ui::PricingPageAdapter>().set_current_image_path(path_str.into());
                             app.global::<ui::PricingPageAdapter>().set_current_image(img);
                             app.global::<ui::PricingPageAdapter>().set_current_image_index(index);

@@ -534,9 +534,9 @@ export component PricingCategoryItem inherits Rectangle {
     callback toggle-clicked();
     callback image-clicked(int);
 
-    height: expanded ? (22px + image-count * 20px) : 22px;
+    height: expanded ? (28px + image-count * 24px) : 28px;
     background: is-selected ? #e3f2fd : #fafafa;
-    border-radius: 3px;
+    border-radius: 4px;
 
     VerticalLayout {
         padding: 0;
@@ -544,30 +544,30 @@ export component PricingCategoryItem inherits Rectangle {
 
         // 分类标题
         Rectangle {
-            height: 22px;
+            height: 28px;
             background: header-touch.has-hover ? #f0f0f0 : transparent;
-            border-radius: 3px;
+            border-radius: 4px;
 
             header-touch := TouchArea {
                 clicked => { root.toggle-clicked(); }
             }
 
             HorizontalLayout {
-                padding-left: 4px;
-                padding-right: 4px;
-                spacing: 2px;
+                padding-left: 6px;
+                padding-right: 6px;
+                spacing: 4px;
 
                 Text {
                     text: expanded ? "▼" : "▶";
-                    font-size: 8px;
+                    font-size: 10px;
                     color: #666;
                     vertical-alignment: center;
-                    width: 10px;
+                    width: 12px;
                 }
 
                 Text {
                     text: display-name;
-                    font-size: 10px;
+                    font-size: 12px;
                     font-weight: 600;
                     color: #333;
                     horizontal-stretch: 1;
@@ -576,7 +576,7 @@ export component PricingCategoryItem inherits Rectangle {
 
                 Text {
                     text: "(" + image-count + ")";
-                    font-size: 9px;
+                    font-size: 10px;
                     color: #999;
                     vertical-alignment: center;
                 }
@@ -585,15 +585,15 @@ export component PricingCategoryItem inherits Rectangle {
 
         // 图片名列表（展开时）
         if expanded && images.length > 0: VerticalLayout {
-            padding-left: 16px;
-            padding-right: 4px;
-            padding-bottom: 2px;
+            padding-left: 20px;
+            padding-right: 6px;
+            padding-bottom: 4px;
             spacing: 0px;
 
             for image[i] in images: Rectangle {
-                height: 20px;
+                height: 24px;
                 background: i == selected-image-index ? #bbdefb : image-touch.has-hover ? #e8e8e8 : transparent;
-                border-radius: 2px;
+                border-radius: 3px;
                 border-width: i == selected-image-index ? 1px : 0px;
                 border-color: i == selected-image-index ? #1976D2 : transparent;
 
@@ -603,7 +603,7 @@ export component PricingCategoryItem inherits Rectangle {
 
                 Text {
                     text: image;
-                    font-size: 9px;
+                    font-size: 11px;
                     color: i == selected-image-index ? #1976D2 : #555;
                     font-weight: i == selected-image-index ? 600 : 400;
                     vertical-alignment: center;
