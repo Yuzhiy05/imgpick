@@ -138,14 +138,13 @@ fn load_categories_for_plan_with_db(base_dir: &Path, plan_name: &str, db: &Datab
     as_images.sort();
     cm_images.sort();
     
-    // 添加已标价父分类（包含所有已标价图片）
-    let all_priced_names: Vec<String> = priced_images.iter().map(|img| img.file_name.clone()).collect();
+    // 添加已标价父分类（不包含图片，只作为分类容器）
     result.push(ui::ImageCategoryData {
         name: "priced".into(),
         display_name: format!("已标价 ({})", priced_images.len()).into(),
         count: priced_images.len() as i32,
         expanded: false,
-        images: all_priced_names.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+        images: Vec::<slint::SharedString>::new().as_slice().into(), // 空列表
     });
     
     // 添加血型子分类
@@ -298,14 +297,13 @@ fn refresh_categories_for_plan_with_db(base_dir: &Path, plan_name: &str, current
         .map(|cat| cat.expanded)
         .unwrap_or(false);
     
-    // 添加已标价父分类（包含所有已标价图片）
-    let all_priced_names: Vec<String> = priced_images.iter().map(|img| img.file_name.clone()).collect();
+    // 添加已标价父分类（不包含图片，只作为分类容器）
     result.push(ui::ImageCategoryData {
         name: "priced".into(),
         display_name: format!("已标价 ({})", priced_images.len()).into(),
         count: priced_images.len() as i32,
         expanded: priced_expanded,
-        images: all_priced_names.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+        images: Vec::<slint::SharedString>::new().as_slice().into(), // 空列表
     });
     
     // 添加血型子分类

@@ -121,7 +121,8 @@ export component ImageCategoryItem inherits Rectangle {
     callback toggle-clicked();
     callback image-clicked(int);
     
-    height: expanded ? (30px + images.length * 24px) : 30px;
+    // 如果是父分类（images为空），只显示标题栏；否则显示标题栏+图片列表
+    height: expanded ? (30px + (images.length > 0 ? images.length * 24px : 0px)) : 30px;
     background: is-selected ? #e3f2fd : #fafafa;
     border-radius: 4px;
     border-width: 1px;
@@ -173,7 +174,7 @@ export component ImageCategoryItem inherits Rectangle {
             }
         }
         
-        // 图片列表（展开时显示）
+        // 图片列表（展开时显示，且images不为空）
         if expanded && images.length > 0: VerticalLayout {
             padding-left: 24px;
             padding-right: 8px;
@@ -534,7 +535,8 @@ export component PricingCategoryItem inherits Rectangle {
     callback toggle-clicked();
     callback image-clicked(int);
 
-    height: expanded ? (28px + image-count * 24px) : 28px;
+    // 如果是父分类（images为空），只显示标题栏；否则显示标题栏+图片列表
+    height: expanded ? (28px + (images.length > 0 ? images.length * 24px : 0px)) : 28px;
     background: is-selected ? #e3f2fd : #fafafa;
     border-radius: 4px;
 
@@ -583,7 +585,7 @@ export component PricingCategoryItem inherits Rectangle {
             }
         }
 
-        // 图片名列表（展开时）
+        // 图片名列表（展开时，且images不为空）
         if expanded && images.length > 0: VerticalLayout {
             padding-left: 20px;
             padding-right: 6px;
