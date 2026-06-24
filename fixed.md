@@ -1003,3 +1003,28 @@ if next_index < images.iter().count() as i32 {
     app.global::<ui::PricingPageAdapter>().invoke_clear_slots();
 }
 ```
+
+---
+
+## 37. 标价后源文件被删除
+
+**问题描述**: 标价后图片源文件越来越少，源文件被错误删除。
+
+**原因**: `save_priced` 和 `copy_to_pending` 方法中，在更新DB记录前会删除旧文件，但没有区分源文件目录，导致src目录下的源文件也被删除。
+
+**解决方案**: 只删除非src目录的旧文件，保留源文件。
+
+```rust
+// 不删除源文件，只更新DB记录
+// 源文件（src目录）应该保留，只删除非src目录的旧文件
+let old_path = Path::new(&existing.file_path);
+let old_parent = old_path.parent().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_string());
+if old_parent.as_deref() != Some("src") && old_path.exists() {
+    let _ = std::fs::remove_file(old_path);
+}
+```
+
+**关键点**:
+1. 检查旧文件的父目录名是否为"src"
+2. 只删除非src目录的旧文件（如pend、priced目录）
+3. src目录下的源文件应该永久保留
