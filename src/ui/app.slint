@@ -569,25 +569,32 @@ export component PricingPage inherits Rectangle {
         padding: 12px;
         spacing: 8px;
 
-        Text {
-            text: "图片标价";
-            font-size: 18px;
-            font-weight: 700;
-            color: #1976D2;
-        }
-
-        // 状态消息
-        if PricingPageAdapter.status-message != "": Rectangle {
+        // 标题行：标题 + 状态消息
+        HorizontalLayout {
+            spacing: 12px;
             height: 28px;
-            background: #e8f5e9;
-            border-radius: 4px;
 
             Text {
-                text: PricingPageAdapter.status-message;
-                color: #2e7d32;
-                font-size: 13px;
-                horizontal-alignment: center;
+                text: "图片标价";
+                font-size: 18px;
+                font-weight: 700;
+                color: #1976D2;
                 vertical-alignment: center;
+            }
+
+            // 状态消息（与标题平行）
+            if PricingPageAdapter.status-message != "": Rectangle {
+                horizontal-stretch: 1;
+                background: PricingPageAdapter.status-message == "标价成功" ? #e8f5e9 : #ffebee;
+                border-radius: 4px;
+
+                Text {
+                    text: PricingPageAdapter.status-message;
+                    color: PricingPageAdapter.status-message == "标价成功" ? #2e7d32 : #c62828;
+                    font-size: 13px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
             }
         }
 
