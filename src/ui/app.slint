@@ -106,6 +106,14 @@ export struct ImageCategoryData {
     count: int,
     expanded: bool,
     images: [string],
+    // 子分类属性
+    has-subcategories: bool,
+    subcategory-names: [string],
+    subcategory-counts: [int],
+    subcategory-expanded: [bool],
+    subcategory-1-images: [string],
+    subcategory-2-images: [string],
+    subcategory-3-images: [string],
 }
 
 // 图片分类项组件（可展开）
@@ -118,11 +126,21 @@ export component ImageCategoryItem inherits Rectangle {
     in-out property <bool> is-selected: false;
     in-out property <int> selected-image-index: -1;
     
+    // 子分类属性
+    in-out property <bool> has-subcategories: false;
+    in-out property <[string]> subcategory-names: [];
+    in-out property <[int]> subcategory-counts: [];
+    in-out property <[bool]> subcategory-expanded: [];
+    in-out property <[string]> subcategory-1-images: [];
+    in-out property <[string]> subcategory-2-images: [];
+    in-out property <[string]> subcategory-3-images: [];
+    
     callback toggle-clicked();
     callback image-clicked(int);
+    callback subcategory-clicked(int);
     
-    // 如果是父分类（images为空），只显示标题栏；否则显示标题栏+图片列表
-    height: expanded ? (30px + (images.length > 0 ? images.length * 24px : 0px)) : 30px;
+    // 计算总高度
+    height: expanded ? (30px + (has-subcategories ? 3 * 30px + (subcategory-expanded[0] ? subcategory-1-images.length * 24px : 0px) + (subcategory-expanded[1] ? subcategory-2-images.length * 24px : 0px) + (subcategory-expanded[2] ? subcategory-3-images.length * 24px : 0px) : images.length * 24px)) : 30px;
     background: is-selected ? #e3f2fd : #fafafa;
     border-radius: 4px;
     border-width: 1px;
@@ -174,8 +192,217 @@ export component ImageCategoryItem inherits Rectangle {
             }
         }
         
-        // 图片列表（展开时显示，且images不为空）
-        if expanded && images.length > 0: VerticalLayout {
+        // 子分类列表（展开时显示，且有子分类）
+        if expanded && has-subcategories: VerticalLayout {
+            padding-left: 16px;
+            padding-right: 8px;
+            padding-bottom: 4px;
+            spacing: 2px;
+            
+            // 子分类1
+            Rectangle {
+                height: 30px;
+                background: sub1-touch.has-hover ? #f0f0f0 : transparent;
+                border-radius: 3px;
+                
+                sub1-touch := TouchArea {
+                    clicked => { root.subcategory-clicked(0); }
+                }
+                
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 4px;
+                    
+                    Text {
+                        text: subcategory-expanded[0] ? "▼" : "▶";
+                        font-size: 10px;
+                        color: #666;
+                        vertical-alignment: center;
+                        width: 12px;
+                    }
+                    
+                    Text {
+                        text: subcategory-names[0];
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: #333;
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+                    
+                    Text {
+                        text: "(" + subcategory-counts[0] + ")";
+                        font-size: 11px;
+                        color: #999;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            
+            // 子分类1的图片列表
+            if subcategory-expanded[0] && subcategory-1-images.length > 0: VerticalLayout {
+                padding-left: 20px;
+                padding-right: 4px;
+                spacing: 2px;
+                
+                for image[i] in subcategory-1-images: Rectangle {
+                    height: 22px;
+                    background: i == selected-image-index ? #bbdefb : image-touch1.has-hover ? #e8e8e8 : transparent;
+                    border-radius: 2px;
+                    
+                    image-touch1 := TouchArea {
+                        clicked => { root.image-clicked(i); }
+                    }
+                    
+                    Text {
+                        text: image;
+                        font-size: 11px;
+                        color: i == selected-image-index ? #1976D2 : #555;
+                        font-weight: i == selected-image-index ? 600 : 400;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+            
+            // 子分类2
+            Rectangle {
+                height: 30px;
+                background: sub2-touch.has-hover ? #f0f0f0 : transparent;
+                border-radius: 3px;
+                
+                sub2-touch := TouchArea {
+                    clicked => { root.subcategory-clicked(1); }
+                }
+                
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 4px;
+                    
+                    Text {
+                        text: subcategory-expanded[1] ? "▼" : "▶";
+                        font-size: 10px;
+                        color: #666;
+                        vertical-alignment: center;
+                        width: 12px;
+                    }
+                    
+                    Text {
+                        text: subcategory-names[1];
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: #333;
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+                    
+                    Text {
+                        text: "(" + subcategory-counts[1] + ")";
+                        font-size: 11px;
+                        color: #999;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            
+            // 子分类2的图片列表
+            if subcategory-expanded[1] && subcategory-2-images.length > 0: VerticalLayout {
+                padding-left: 20px;
+                padding-right: 4px;
+                spacing: 2px;
+                
+                for image[i] in subcategory-2-images: Rectangle {
+                    height: 22px;
+                    background: i == selected-image-index ? #bbdefb : image-touch2.has-hover ? #e8e8e8 : transparent;
+                    border-radius: 2px;
+                    
+                    image-touch2 := TouchArea {
+                        clicked => { root.image-clicked(i); }
+                    }
+                    
+                    Text {
+                        text: image;
+                        font-size: 11px;
+                        color: i == selected-image-index ? #1976D2 : #555;
+                        font-weight: i == selected-image-index ? 600 : 400;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+            
+            // 子分类3
+            Rectangle {
+                height: 30px;
+                background: sub3-touch.has-hover ? #f0f0f0 : transparent;
+                border-radius: 3px;
+                
+                sub3-touch := TouchArea {
+                    clicked => { root.subcategory-clicked(2); }
+                }
+                
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 4px;
+                    
+                    Text {
+                        text: subcategory-expanded[2] ? "▼" : "▶";
+                        font-size: 10px;
+                        color: #666;
+                        vertical-alignment: center;
+                        width: 12px;
+                    }
+                    
+                    Text {
+                        text: subcategory-names[2];
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: #333;
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+                    
+                    Text {
+                        text: "(" + subcategory-counts[2] + ")";
+                        font-size: 11px;
+                        color: #999;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            
+            // 子分类3的图片列表
+            if subcategory-expanded[2] && subcategory-3-images.length > 0: VerticalLayout {
+                padding-left: 20px;
+                padding-right: 4px;
+                spacing: 2px;
+                
+                for image[i] in subcategory-3-images: Rectangle {
+                    height: 22px;
+                    background: i == selected-image-index ? #bbdefb : image-touch3.has-hover ? #e8e8e8 : transparent;
+                    border-radius: 2px;
+                    
+                    image-touch3 := TouchArea {
+                        clicked => { root.image-clicked(i); }
+                    }
+                    
+                    Text {
+                        text: image;
+                        font-size: 11px;
+                        color: i == selected-image-index ? #1976D2 : #555;
+                        font-weight: i == selected-image-index ? 600 : 400;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+        
+        // 普通分类的图片列表（展开时显示，且images不为空）
+        if expanded && !has-subcategories && images.length > 0: VerticalLayout {
             padding-left: 24px;
             padding-right: 8px;
             padding-bottom: 4px;
@@ -185,13 +412,9 @@ export component ImageCategoryItem inherits Rectangle {
                 height: 22px;
                 background: i == selected-image-index ? #bbdefb : image-touch.has-hover ? #e8e8e8 : transparent;
                 border-radius: 2px;
-                border-width: i == selected-image-index ? 1px : 0px;
-                border-color: i == selected-image-index ? #1976D2 : transparent;
                 
                 image-touch := TouchArea {
-                    clicked => {
-                        root.image-clicked(i);
-                    }
+                    clicked => { root.image-clicked(i); }
                 }
                 
                 Text {
@@ -236,6 +459,7 @@ export global ManagePageAdapter {
     callback toggle-category(int);
     callback select-category(int);
     callback select-image(int);
+    callback toggle-subcategory(int, int);
 }
 
 // 计划管理页面
@@ -531,12 +755,22 @@ export component PricingCategoryItem inherits Rectangle {
     in-out property <[string]> images: [];
     in-out property <bool> is-selected: false;
     in-out property <int> selected-image-index: -1;
+    
+    // 子分类属性
+    in-out property <bool> has-subcategories: false;
+    in-out property <[string]> subcategory-names: [];
+    in-out property <[int]> subcategory-counts: [];
+    in-out property <[bool]> subcategory-expanded: [];
+    in-out property <[string]> subcategory-1-images: [];
+    in-out property <[string]> subcategory-2-images: [];
+    in-out property <[string]> subcategory-3-images: [];
 
     callback toggle-clicked();
     callback image-clicked(int);
+    callback subcategory-clicked(int);
 
-    // 如果是父分类（images为空），只显示标题栏；否则显示标题栏+图片列表
-    height: expanded ? (28px + (images.length > 0 ? images.length * 24px : 0px)) : 28px;
+    // 计算总高度
+    height: expanded ? (28px + (has-subcategories ? 3 * 28px + (subcategory-expanded[0] ? subcategory-1-images.length * 24px : 0px) + (subcategory-expanded[1] ? subcategory-2-images.length * 24px : 0px) + (subcategory-expanded[2] ? subcategory-3-images.length * 24px : 0px) : images.length * 24px)) : 28px;
     background: is-selected ? #e3f2fd : #fafafa;
     border-radius: 4px;
 
@@ -585,8 +819,217 @@ export component PricingCategoryItem inherits Rectangle {
             }
         }
 
-        // 图片名列表（展开时，且images不为空）
-        if expanded && images.length > 0: VerticalLayout {
+        // 子分类列表（展开时显示，且有子分类）
+        if expanded && has-subcategories: VerticalLayout {
+            padding-left: 16px;
+            padding-right: 6px;
+            padding-bottom: 4px;
+            spacing: 2px;
+            
+            // 子分类1
+            Rectangle {
+                height: 28px;
+                background: sub1-touch.has-hover ? #f0f0f0 : transparent;
+                border-radius: 3px;
+                
+                sub1-touch := TouchArea {
+                    clicked => { root.subcategory-clicked(0); }
+                }
+                
+                HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    spacing: 4px;
+                    
+                    Text {
+                        text: subcategory-expanded[0] ? "▼" : "▶";
+                        font-size: 10px;
+                        color: #666;
+                        vertical-alignment: center;
+                        width: 12px;
+                    }
+                    
+                    Text {
+                        text: subcategory-names[0];
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: #333;
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+                    
+                    Text {
+                        text: "(" + subcategory-counts[0] + ")";
+                        font-size: 10px;
+                        color: #999;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            
+            // 子分类1的图片列表
+            if subcategory-expanded[0] && subcategory-1-images.length > 0: VerticalLayout {
+                padding-left: 20px;
+                padding-right: 4px;
+                spacing: 2px;
+                
+                for image[i] in subcategory-1-images: Rectangle {
+                    height: 22px;
+                    background: i == selected-image-index ? #bbdefb : image-touch1.has-hover ? #e8e8e8 : transparent;
+                    border-radius: 2px;
+                    
+                    image-touch1 := TouchArea {
+                        clicked => { root.image-clicked(i); }
+                    }
+                    
+                    Text {
+                        text: image;
+                        font-size: 11px;
+                        color: i == selected-image-index ? #1976D2 : #555;
+                        font-weight: i == selected-image-index ? 600 : 400;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+            
+            // 子分类2
+            Rectangle {
+                height: 28px;
+                background: sub2-touch.has-hover ? #f0f0f0 : transparent;
+                border-radius: 3px;
+                
+                sub2-touch := TouchArea {
+                    clicked => { root.subcategory-clicked(1); }
+                }
+                
+                HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    spacing: 4px;
+                    
+                    Text {
+                        text: subcategory-expanded[1] ? "▼" : "▶";
+                        font-size: 10px;
+                        color: #666;
+                        vertical-alignment: center;
+                        width: 12px;
+                    }
+                    
+                    Text {
+                        text: subcategory-names[1];
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: #333;
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+                    
+                    Text {
+                        text: "(" + subcategory-counts[1] + ")";
+                        font-size: 10px;
+                        color: #999;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            
+            // 子分类2的图片列表
+            if subcategory-expanded[1] && subcategory-2-images.length > 0: VerticalLayout {
+                padding-left: 20px;
+                padding-right: 4px;
+                spacing: 2px;
+                
+                for image[i] in subcategory-2-images: Rectangle {
+                    height: 22px;
+                    background: i == selected-image-index ? #bbdefb : image-touch2.has-hover ? #e8e8e8 : transparent;
+                    border-radius: 2px;
+                    
+                    image-touch2 := TouchArea {
+                        clicked => { root.image-clicked(i); }
+                    }
+                    
+                    Text {
+                        text: image;
+                        font-size: 11px;
+                        color: i == selected-image-index ? #1976D2 : #555;
+                        font-weight: i == selected-image-index ? 600 : 400;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+            
+            // 子分类3
+            Rectangle {
+                height: 28px;
+                background: sub3-touch.has-hover ? #f0f0f0 : transparent;
+                border-radius: 3px;
+                
+                sub3-touch := TouchArea {
+                    clicked => { root.subcategory-clicked(2); }
+                }
+                
+                HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    spacing: 4px;
+                    
+                    Text {
+                        text: subcategory-expanded[2] ? "▼" : "▶";
+                        font-size: 10px;
+                        color: #666;
+                        vertical-alignment: center;
+                        width: 12px;
+                    }
+                    
+                    Text {
+                        text: subcategory-names[2];
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: #333;
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+                    
+                    Text {
+                        text: "(" + subcategory-counts[2] + ")";
+                        font-size: 10px;
+                        color: #999;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            
+            // 子分类3的图片列表
+            if subcategory-expanded[2] && subcategory-3-images.length > 0: VerticalLayout {
+                padding-left: 20px;
+                padding-right: 4px;
+                spacing: 2px;
+                
+                for image[i] in subcategory-3-images: Rectangle {
+                    height: 22px;
+                    background: i == selected-image-index ? #bbdefb : image-touch3.has-hover ? #e8e8e8 : transparent;
+                    border-radius: 2px;
+                    
+                    image-touch3 := TouchArea {
+                        clicked => { root.image-clicked(i); }
+                    }
+                    
+                    Text {
+                        text: image;
+                        font-size: 11px;
+                        color: i == selected-image-index ? #1976D2 : #555;
+                        font-weight: i == selected-image-index ? 600 : 400;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+        
+        // 普通分类的图片列表（展开时显示，且images不为空）
+        if expanded && !has-subcategories && images.length > 0: VerticalLayout {
             padding-left: 20px;
             padding-right: 6px;
             padding-bottom: 4px;
@@ -814,6 +1257,15 @@ export component PricingPage inherits Rectangle {
                                     images: category.images;
                                     is-selected: ManagePageAdapter.selected-category == i;
                                     selected-image-index: ManagePageAdapter.current-category-index == i ? ManagePageAdapter.current-image-index : -1;
+                                    
+                                    // 子分类属性
+                                    has-subcategories: category.has-subcategories;
+                                    subcategory-names: category.subcategory-names;
+                                    subcategory-counts: category.subcategory-counts;
+                                    subcategory-expanded: category.subcategory-expanded;
+                                    subcategory-1-images: category.subcategory-1-images;
+                                    subcategory-2-images: category.subcategory-2-images;
+                                    subcategory-3-images: category.subcategory-3-images;
 
                                     toggle-clicked => {
                                         ManagePageAdapter.toggle-category(i);
@@ -822,6 +1274,10 @@ export component PricingPage inherits Rectangle {
                                     image-clicked(idx) => {
                                         ManagePageAdapter.select-category(i);
                                         ManagePageAdapter.select-image(idx);
+                                    }
+                                    
+                                    subcategory-clicked(idx) => {
+                                        ManagePageAdapter.toggle-subcategory(i, idx);
                                     }
                                 }
                             }
@@ -1210,6 +1666,15 @@ export component ManagePage inherits Rectangle {
                                     images: category.images;
                                     is-selected: ManagePageAdapter.selected-category == i;
                                     selected-image-index: ManagePageAdapter.current-category-index == i ? ManagePageAdapter.current-image-index : -1;
+                                    
+                                    // 子分类属性
+                                    has-subcategories: category.has-subcategories;
+                                    subcategory-names: category.subcategory-names;
+                                    subcategory-counts: category.subcategory-counts;
+                                    subcategory-expanded: category.subcategory-expanded;
+                                    subcategory-1-images: category.subcategory-1-images;
+                                    subcategory-2-images: category.subcategory-2-images;
+                                    subcategory-3-images: category.subcategory-3-images;
 
                                     toggle-clicked => {
                                         ManagePageAdapter.toggle-category(i);
@@ -1218,6 +1683,10 @@ export component ManagePage inherits Rectangle {
                                     image-clicked(idx) => {
                                         ManagePageAdapter.select-category(i);
                                         ManagePageAdapter.select-image(idx);
+                                    }
+                                    
+                                    subcategory-clicked(idx) => {
+                                        ManagePageAdapter.toggle-subcategory(i, idx);
                                     }
                                 }
                             }

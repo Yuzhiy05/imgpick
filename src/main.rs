@@ -89,6 +89,14 @@ fn load_categories_for_plan(base_dir: &Path, plan_name: &str) -> Vec<ui::ImageCa
             count: count as i32,
             expanded: false,
             images: images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+            // 子分类属性（普通分类没有子分类）
+            has_subcategories: false,
+            subcategory_names: Vec::<slint::SharedString>::new().as_slice().into(),
+            subcategory_counts: Vec::<i32>::new().as_slice().into(),
+            subcategory_expanded: Vec::<bool>::new().as_slice().into(),
+            subcategory_1_images: Vec::<slint::SharedString>::new().as_slice().into(),
+            subcategory_2_images: Vec::<slint::SharedString>::new().as_slice().into(),
+            subcategory_3_images: Vec::<slint::SharedString>::new().as_slice().into(),
         });
     }
     result
@@ -116,6 +124,14 @@ fn load_categories_for_plan_with_db(base_dir: &Path, plan_name: &str, db: &Datab
             count: count as i32,
             expanded: false,
             images: images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+            // 子分类属性（普通分类没有子分类）
+            has_subcategories: false,
+            subcategory_names: Vec::<slint::SharedString>::new().as_slice().into(),
+            subcategory_counts: Vec::<i32>::new().as_slice().into(),
+            subcategory_expanded: Vec::<bool>::new().as_slice().into(),
+            subcategory_1_images: Vec::<slint::SharedString>::new().as_slice().into(),
+            subcategory_2_images: Vec::<slint::SharedString>::new().as_slice().into(),
+            subcategory_3_images: Vec::<slint::SharedString>::new().as_slice().into(),
         });
     }
     
@@ -138,40 +154,33 @@ fn load_categories_for_plan_with_db(base_dir: &Path, plan_name: &str, db: &Datab
     as_images.sort();
     cm_images.sort();
     
-    // 添加已标价父分类（不包含图片，只作为分类容器）
+    // 添加已标价父分类（包含子分类）
     result.push(ui::ImageCategoryData {
         name: "priced".into(),
         display_name: format!("已标价 ({})", priced_images.len()).into(),
         count: priced_images.len() as i32,
         expanded: false,
         images: Vec::<slint::SharedString>::new().as_slice().into(), // 空列表
-    });
-    
-    // 添加血型子分类
-    result.push(ui::ImageCategoryData {
-        name: "priced_abo".into(),
-        display_name: format!("  血型 ({})", abo_images.len()).into(),
-        count: abo_images.len() as i32,
-        expanded: false,
-        images: abo_images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
-    });
-    
-    // 添加抗筛子分类
-    result.push(ui::ImageCategoryData {
-        name: "priced_as".into(),
-        display_name: format!("  抗筛 ({})", as_images.len()).into(),
-        count: as_images.len() as i32,
-        expanded: false,
-        images: as_images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
-    });
-    
-    // 添加交叉配血子分类
-    result.push(ui::ImageCategoryData {
-        name: "priced_cm".into(),
-        display_name: format!("  交叉配血 ({})", cm_images.len()).into(),
-        count: cm_images.len() as i32,
-        expanded: false,
-        images: cm_images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+        // 子分类属性
+        has_subcategories: true,
+        subcategory_names: vec![
+            "血型".into(),
+            "抗筛".into(),
+            "交叉配血".into(),
+        ].as_slice().into(),
+        subcategory_counts: vec![
+            abo_images.len() as i32,
+            as_images.len() as i32,
+            cm_images.len() as i32,
+        ].as_slice().into(),
+        subcategory_expanded: vec![
+            false,
+            false,
+            false,
+        ].as_slice().into(),
+        subcategory_1_images: abo_images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+        subcategory_2_images: as_images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+        subcategory_3_images: cm_images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
     });
     
     // 添加待处理分类
@@ -188,6 +197,14 @@ fn load_categories_for_plan_with_db(base_dir: &Path, plan_name: &str, db: &Datab
         count: proc_count as i32,
         expanded: false,
         images: proc_images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+        // 子分类属性（普通分类没有子分类）
+        has_subcategories: false,
+        subcategory_names: Vec::<slint::SharedString>::new().as_slice().into(),
+        subcategory_counts: Vec::<i32>::new().as_slice().into(),
+        subcategory_expanded: Vec::<bool>::new().as_slice().into(),
+        subcategory_1_images: Vec::<slint::SharedString>::new().as_slice().into(),
+        subcategory_2_images: Vec::<slint::SharedString>::new().as_slice().into(),
+        subcategory_3_images: Vec::<slint::SharedString>::new().as_slice().into(),
     });
     
     result
@@ -222,6 +239,14 @@ fn refresh_categories_for_plan(base_dir: &Path, plan_name: &str, current_categor
             count: count as i32,
             expanded,
             images: images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+            // 子分类属性（普通分类没有子分类）
+            has_subcategories: false,
+            subcategory_names: Vec::<slint::SharedString>::new().as_slice().into(),
+            subcategory_counts: Vec::<i32>::new().as_slice().into(),
+            subcategory_expanded: Vec::<bool>::new().as_slice().into(),
+            subcategory_1_images: Vec::<slint::SharedString>::new().as_slice().into(),
+            subcategory_2_images: Vec::<slint::SharedString>::new().as_slice().into(),
+            subcategory_3_images: Vec::<slint::SharedString>::new().as_slice().into(),
         });
     }
     result
@@ -257,6 +282,14 @@ fn refresh_categories_for_plan_with_db(base_dir: &Path, plan_name: &str, current
             count: count as i32,
             expanded,
             images: images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+            // 子分类属性（普通分类没有子分类）
+            has_subcategories: false,
+            subcategory_names: Vec::<slint::SharedString>::new().as_slice().into(),
+            subcategory_counts: Vec::<i32>::new().as_slice().into(),
+            subcategory_expanded: Vec::<bool>::new().as_slice().into(),
+            subcategory_1_images: Vec::<slint::SharedString>::new().as_slice().into(),
+            subcategory_2_images: Vec::<slint::SharedString>::new().as_slice().into(),
+            subcategory_3_images: Vec::<slint::SharedString>::new().as_slice().into(),
         });
     }
     
@@ -297,40 +330,33 @@ fn refresh_categories_for_plan_with_db(base_dir: &Path, plan_name: &str, current
         .map(|cat| cat.expanded)
         .unwrap_or(false);
     
-    // 添加已标价父分类（不包含图片，只作为分类容器）
+    // 添加已标价父分类（包含子分类）
     result.push(ui::ImageCategoryData {
         name: "priced".into(),
         display_name: format!("已标价 ({})", priced_images.len()).into(),
         count: priced_images.len() as i32,
         expanded: priced_expanded,
         images: Vec::<slint::SharedString>::new().as_slice().into(), // 空列表
-    });
-    
-    // 添加血型子分类
-    result.push(ui::ImageCategoryData {
-        name: "priced_abo".into(),
-        display_name: format!("  血型 ({})", abo_images.len()).into(),
-        count: abo_images.len() as i32,
-        expanded: abo_expanded,
-        images: abo_images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
-    });
-    
-    // 添加抗筛子分类
-    result.push(ui::ImageCategoryData {
-        name: "priced_as".into(),
-        display_name: format!("  抗筛 ({})", as_images.len()).into(),
-        count: as_images.len() as i32,
-        expanded: as_expanded,
-        images: as_images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
-    });
-    
-    // 添加交叉配血子分类
-    result.push(ui::ImageCategoryData {
-        name: "priced_cm".into(),
-        display_name: format!("  交叉配血 ({})", cm_images.len()).into(),
-        count: cm_images.len() as i32,
-        expanded: cm_expanded,
-        images: cm_images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+        // 子分类属性
+        has_subcategories: true,
+        subcategory_names: vec![
+            "血型".into(),
+            "抗筛".into(),
+            "交叉配血".into(),
+        ].as_slice().into(),
+        subcategory_counts: vec![
+            abo_images.len() as i32,
+            as_images.len() as i32,
+            cm_images.len() as i32,
+        ].as_slice().into(),
+        subcategory_expanded: vec![
+            abo_expanded,
+            as_expanded,
+            cm_expanded,
+        ].as_slice().into(),
+        subcategory_1_images: abo_images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+        subcategory_2_images: as_images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+        subcategory_3_images: cm_images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
     });
     
     // 添加待处理分类
@@ -351,6 +377,14 @@ fn refresh_categories_for_plan_with_db(base_dir: &Path, plan_name: &str, current
         count: proc_count as i32,
         expanded: proc_expanded,
         images: proc_images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+        // 子分类属性（普通分类没有子分类）
+        has_subcategories: false,
+        subcategory_names: Vec::<slint::SharedString>::new().as_slice().into(),
+        subcategory_counts: Vec::<i32>::new().as_slice().into(),
+        subcategory_expanded: Vec::<bool>::new().as_slice().into(),
+        subcategory_1_images: Vec::<slint::SharedString>::new().as_slice().into(),
+        subcategory_2_images: Vec::<slint::SharedString>::new().as_slice().into(),
+        subcategory_3_images: Vec::<slint::SharedString>::new().as_slice().into(),
     });
     
     result
@@ -878,6 +912,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut cats: Vec<ui::ImageCategoryData> = categories_model_clone.iter().collect();
             if let Some(cat) = cats.get_mut(index as usize) {
                 cat.expanded = !cat.expanded;
+                categories_model_clone.set_vec(cats);
+            }
+        }
+    });
+    
+    let weak_clone = weak.clone();
+    let categories_model_clone = categories_model.clone();
+    app.global::<ui::ManagePageAdapter>().on_toggle_subcategory(move |cat_index, sub_index| {
+        if let Some(app) = weak_clone.upgrade() {
+            let mut cats: Vec<ui::ImageCategoryData> = categories_model_clone.iter().collect();
+            if let Some(cat) = cats.get_mut(cat_index as usize) {
+                // 更新子分类的展开状态
+                let mut sub_expanded: Vec<bool> = cat.subcategory_expanded.iter().collect();
+                if let Some(expanded) = sub_expanded.get_mut(sub_index as usize) {
+                    *expanded = !*expanded;
+                }
+                cat.subcategory_expanded = sub_expanded.as_slice().into();
                 categories_model_clone.set_vec(cats);
             }
         }
