@@ -135,9 +135,14 @@ export component ImageCategoryItem inherits Rectangle {
     in-out property <[string]> subcategory-2-images: [];
     in-out property <[string]> subcategory-3-images: [];
     
+    // 每个子分类单独跟踪选中状态
+    in-out property <int> selected-subcategory: -1;  // 选中的子分类索引 (0,1,2)
+    in-out property <int> selected-subcategory-image: -1;  // 选中的子分类内图片索引
+    
     callback toggle-clicked();
     callback image-clicked(int);
     callback subcategory-clicked(int);
+    callback subcategory-image-clicked(int, int);  // (子分类索引, 图片索引)
     
     // 计算总高度
     height: expanded ? (30px + (has-subcategories ? 3 * 30px + (subcategory-expanded[0] ? subcategory-1-images.length * 24px : 0px) + (subcategory-expanded[1] ? subcategory-2-images.length * 24px : 0px) + (subcategory-expanded[2] ? subcategory-3-images.length * 24px : 0px) : images.length * 24px)) : 30px;
@@ -246,20 +251,20 @@ export component ImageCategoryItem inherits Rectangle {
                 padding-right: 4px;
                 spacing: 2px;
                 
-                for image[i] in subcategory-1-images: Rectangle {
+                for image[j] in subcategory-1-images: Rectangle {
                     height: 22px;
-                    background: i == selected-image-index ? #bbdefb : image-touch1.has-hover ? #e8e8e8 : transparent;
+                    background: (selected-subcategory == 0 && selected-subcategory-image == j) ? #bbdefb : image-touch1.has-hover ? #e8e8e8 : transparent;
                     border-radius: 2px;
                     
                     image-touch1 := TouchArea {
-                        clicked => { root.image-clicked(i); }
+                        clicked => { root.subcategory-image-clicked(0, j); }
                     }
                     
                     Text {
                         text: image;
                         font-size: 11px;
-                        color: i == selected-image-index ? #1976D2 : #555;
-                        font-weight: i == selected-image-index ? 600 : 400;
+                        color: (selected-subcategory == 0 && selected-subcategory-image == j) ? #1976D2 : #555;
+                        font-weight: (selected-subcategory == 0 && selected-subcategory-image == j) ? 600 : 400;
                         vertical-alignment: center;
                         overflow: elide;
                     }
@@ -313,20 +318,20 @@ export component ImageCategoryItem inherits Rectangle {
                 padding-right: 4px;
                 spacing: 2px;
                 
-                for image[i] in subcategory-2-images: Rectangle {
+                for image[j] in subcategory-2-images: Rectangle {
                     height: 22px;
-                    background: i == selected-image-index ? #bbdefb : image-touch2.has-hover ? #e8e8e8 : transparent;
+                    background: (selected-subcategory == 1 && selected-subcategory-image == j) ? #bbdefb : image-touch2.has-hover ? #e8e8e8 : transparent;
                     border-radius: 2px;
                     
                     image-touch2 := TouchArea {
-                        clicked => { root.image-clicked(i); }
+                        clicked => { root.subcategory-image-clicked(1, j); }
                     }
                     
                     Text {
                         text: image;
                         font-size: 11px;
-                        color: i == selected-image-index ? #1976D2 : #555;
-                        font-weight: i == selected-image-index ? 600 : 400;
+                        color: (selected-subcategory == 1 && selected-subcategory-image == j) ? #1976D2 : #555;
+                        font-weight: (selected-subcategory == 1 && selected-subcategory-image == j) ? 600 : 400;
                         vertical-alignment: center;
                         overflow: elide;
                     }
@@ -380,20 +385,20 @@ export component ImageCategoryItem inherits Rectangle {
                 padding-right: 4px;
                 spacing: 2px;
                 
-                for image[i] in subcategory-3-images: Rectangle {
+                for image[j] in subcategory-3-images: Rectangle {
                     height: 22px;
-                    background: i == selected-image-index ? #bbdefb : image-touch3.has-hover ? #e8e8e8 : transparent;
+                    background: (selected-subcategory == 2 && selected-subcategory-image == j) ? #bbdefb : image-touch3.has-hover ? #e8e8e8 : transparent;
                     border-radius: 2px;
                     
                     image-touch3 := TouchArea {
-                        clicked => { root.image-clicked(i); }
+                        clicked => { root.subcategory-image-clicked(2, j); }
                     }
                     
                     Text {
                         text: image;
                         font-size: 11px;
-                        color: i == selected-image-index ? #1976D2 : #555;
-                        font-weight: i == selected-image-index ? 600 : 400;
+                        color: (selected-subcategory == 2 && selected-subcategory-image == j) ? #1976D2 : #555;
+                        font-weight: (selected-subcategory == 2 && selected-subcategory-image == j) ? 600 : 400;
                         vertical-alignment: center;
                         overflow: elide;
                     }
@@ -455,11 +460,16 @@ export global ManagePageAdapter {
     in-out property <int> current-image-index: -1;
     in-out property <int> current-category-index: -1;
     
+    // 子分类选中状态（用于高亮显示）
+    in-out property <int> selected-subcategory: -1;  // 选中的子分类索引 (0,1,2)
+    in-out property <int> selected-subcategory-image: -1;  // 选中的子分类内图片索引
+    
     callback load-categories(int);
     callback toggle-category(int);
     callback select-category(int);
     callback select-image(int);
     callback toggle-subcategory(int, int);
+    callback subcategory-image-clicked(int, int, int);  // (分类索引, 子分类索引, 图片索引)
 }
 
 // 计划管理页面
@@ -768,6 +778,11 @@ export component PricingCategoryItem inherits Rectangle {
     callback toggle-clicked();
     callback image-clicked(int);
     callback subcategory-clicked(int);
+    callback subcategory-image-clicked(int, int);  // (子分类索引, 图片索引)
+    
+    // 每个子分类单独跟踪选中状态
+    in-out property <int> selected-subcategory: -1;  // 选中的子分类索引 (0,1,2)
+    in-out property <int> selected-subcategory-image: -1;  // 选中的子分类内图片索引
 
     // 计算总高度
     height: expanded ? (28px + (has-subcategories ? 3 * 28px + (subcategory-expanded[0] ? subcategory-1-images.length * 24px : 0px) + (subcategory-expanded[1] ? subcategory-2-images.length * 24px : 0px) + (subcategory-expanded[2] ? subcategory-3-images.length * 24px : 0px) : images.length * 24px)) : 28px;
@@ -873,20 +888,20 @@ export component PricingCategoryItem inherits Rectangle {
                 padding-right: 4px;
                 spacing: 2px;
                 
-                for image[i] in subcategory-1-images: Rectangle {
+                for image[j] in subcategory-1-images: Rectangle {
                     height: 22px;
-                    background: i == selected-image-index ? #bbdefb : image-touch1.has-hover ? #e8e8e8 : transparent;
+                    background: (selected-subcategory == 0 && selected-subcategory-image == j) ? #bbdefb : image-touch1.has-hover ? #e8e8e8 : transparent;
                     border-radius: 2px;
                     
                     image-touch1 := TouchArea {
-                        clicked => { root.image-clicked(i); }
+                        clicked => { root.subcategory-image-clicked(0, j); }
                     }
                     
                     Text {
                         text: image;
                         font-size: 11px;
-                        color: i == selected-image-index ? #1976D2 : #555;
-                        font-weight: i == selected-image-index ? 600 : 400;
+                        color: (selected-subcategory == 0 && selected-subcategory-image == j) ? #1976D2 : #555;
+                        font-weight: (selected-subcategory == 0 && selected-subcategory-image == j) ? 600 : 400;
                         vertical-alignment: center;
                         overflow: elide;
                     }
@@ -940,20 +955,20 @@ export component PricingCategoryItem inherits Rectangle {
                 padding-right: 4px;
                 spacing: 2px;
                 
-                for image[i] in subcategory-2-images: Rectangle {
+                for image[j] in subcategory-2-images: Rectangle {
                     height: 22px;
-                    background: i == selected-image-index ? #bbdefb : image-touch2.has-hover ? #e8e8e8 : transparent;
+                    background: (selected-subcategory == 1 && selected-subcategory-image == j) ? #bbdefb : image-touch2.has-hover ? #e8e8e8 : transparent;
                     border-radius: 2px;
                     
                     image-touch2 := TouchArea {
-                        clicked => { root.image-clicked(i); }
+                        clicked => { root.subcategory-image-clicked(1, j); }
                     }
                     
                     Text {
                         text: image;
                         font-size: 11px;
-                        color: i == selected-image-index ? #1976D2 : #555;
-                        font-weight: i == selected-image-index ? 600 : 400;
+                        color: (selected-subcategory == 1 && selected-subcategory-image == j) ? #1976D2 : #555;
+                        font-weight: (selected-subcategory == 1 && selected-subcategory-image == j) ? 600 : 400;
                         vertical-alignment: center;
                         overflow: elide;
                     }
@@ -1007,20 +1022,20 @@ export component PricingCategoryItem inherits Rectangle {
                 padding-right: 4px;
                 spacing: 2px;
                 
-                for image[i] in subcategory-3-images: Rectangle {
+                for image[j] in subcategory-3-images: Rectangle {
                     height: 22px;
-                    background: i == selected-image-index ? #bbdefb : image-touch3.has-hover ? #e8e8e8 : transparent;
+                    background: (selected-subcategory == 2 && selected-subcategory-image == j) ? #bbdefb : image-touch3.has-hover ? #e8e8e8 : transparent;
                     border-radius: 2px;
                     
                     image-touch3 := TouchArea {
-                        clicked => { root.image-clicked(i); }
+                        clicked => { root.subcategory-image-clicked(2, j); }
                     }
                     
                     Text {
                         text: image;
                         font-size: 11px;
-                        color: i == selected-image-index ? #1976D2 : #555;
-                        font-weight: i == selected-image-index ? 600 : 400;
+                        color: (selected-subcategory == 2 && selected-subcategory-image == j) ? #1976D2 : #555;
+                        font-weight: (selected-subcategory == 2 && selected-subcategory-image == j) ? 600 : 400;
                         vertical-alignment: center;
                         overflow: elide;
                     }
@@ -1266,6 +1281,10 @@ export component PricingPage inherits Rectangle {
                                     subcategory-1-images: category.subcategory-1-images;
                                     subcategory-2-images: category.subcategory-2-images;
                                     subcategory-3-images: category.subcategory-3-images;
+                                    
+                                    // 子分类选中状态
+                                    selected-subcategory: ManagePageAdapter.current-category-index == i ? ManagePageAdapter.selected-subcategory : -1;
+                                    selected-subcategory-image: ManagePageAdapter.current-category-index == i ? ManagePageAdapter.selected-subcategory-image : -1;
 
                                     toggle-clicked => {
                                         ManagePageAdapter.toggle-category(i);
@@ -1278,6 +1297,10 @@ export component PricingPage inherits Rectangle {
                                     
                                     subcategory-clicked(idx) => {
                                         ManagePageAdapter.toggle-subcategory(i, idx);
+                                    }
+                                    
+                                    subcategory-image-clicked(sub_idx, img_idx) => {
+                                        ManagePageAdapter.subcategory-image-clicked(i, sub_idx, img_idx);
                                     }
                                 }
                             }
@@ -1675,6 +1698,10 @@ export component ManagePage inherits Rectangle {
                                     subcategory-1-images: category.subcategory-1-images;
                                     subcategory-2-images: category.subcategory-2-images;
                                     subcategory-3-images: category.subcategory-3-images;
+                                    
+                                    // 子分类选中状态
+                                    selected-subcategory: ManagePageAdapter.current-category-index == i ? ManagePageAdapter.selected-subcategory : -1;
+                                    selected-subcategory-image: ManagePageAdapter.current-category-index == i ? ManagePageAdapter.selected-subcategory-image : -1;
 
                                     toggle-clicked => {
                                         ManagePageAdapter.toggle-category(i);
@@ -1687,6 +1714,10 @@ export component ManagePage inherits Rectangle {
                                     
                                     subcategory-clicked(idx) => {
                                         ManagePageAdapter.toggle-subcategory(i, idx);
+                                    }
+                                    
+                                    subcategory-image-clicked(sub_idx, img_idx) => {
+                                        ManagePageAdapter.subcategory-image-clicked(i, sub_idx, img_idx);
                                     }
                                 }
                             }

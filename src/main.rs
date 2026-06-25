@@ -1039,6 +1039,102 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
     
+    // 子分类图片点击回调
+    let weak_clone = weak.clone();
+    let base_dir_clone = base_dir.clone();
+    let db_clone = db.clone();
+    app.global::<ui::ManagePageAdapter>().on_subcategory_image_clicked(move |cat_index, sub_index, img_index| {
+        if let Some(app) = weak_clone.upgrade() {
+            // 更新选中状态
+            app.global::<ui::ManagePageAdapter>().set_selected_subcategory(sub_index);
+            app.global::<ui::ManagePageAdapter>().set_selected_subcategory_image(img_index);
+            app.global::<ui::ManagePageAdapter>().set_current_category_index(cat_index);
+            
+            let categories = app.global::<ui::ManagePageAdapter>().get_categories();
+            if let Some(category) = categories.iter().nth(cat_index as usize) {
+                // 根据子分类索引获取图片列表
+                let images: Vec<slint::SharedString> = match sub_index {
+                    0 => category.subcategory_1_images.iter().collect(),
+                    1 => category.subcategory_2_images.iter().collect(),
+                    2 => category.subcategory_3_images.iter().collect(),
+                    _ => Vec::new(),
+                };
+                
+                if let Some(file_name) = images.get(img_index as usize) {
+                    let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
+                    if plan_name.is_empty() { return; }
+                    
+                    // 子分类名称映射
+                    let sub_cat_name = match sub_index {
+                        0 => "priced_abo",
+                        1 => "priced_as",
+                        2 => "priced_cm",
+                        _ => "",
+                    };
+                    
+                    let path = std::path::PathBuf::from(&base_dir_clone)
+                        .join("plans")
+                        .join(&plan_name)
+                        .join("priced")
+                        .join(file_name.as_str());
+                    
+                    let path_str = path.display().to_string();
+                    app.global::<ui::ManagePageAdapter>().set_selected_image_path(path_str.clone().into());
+                    
+                    // 加载图片到ManagePage显示
+                    match slint::Image::load_from_path(&path) {
+                        Ok(img) => {
+                            app.global::<ui::ManagePageAdapter>().set_selected_image_data(img.clone());
+                            // 同时加载到PricingPage显示
+                            app.global::<ui::PricingPageAdapter>().set_current_image_path(path_str.into());
+                            app.global::<ui::PricingPageAdapter>().set_current_image(img);
+                            app.global::<ui::PricingPageAdapter>().set_current_image_index(img_index);
+                            
+                            // 更新PricingPage的images列表为当前子分类的图片列表
+                            app.global::<ui::PricingPageAdapter>().set_images(images.as_slice().into());
+                            
+                            // 已标价图片：从DB读取价位和项目类型
+                            if let Ok(plan) = db_clone.get_plan_by_name(&plan_name) {
+                                if let Some(plan) = plan {
+                                    if let Ok(Some(image)) = db_clone.find_image_by_name(plan.id, &file_name.to_string()) {
+                                        if let Some(ref price) = image.price {
+                                            let slots = parse_price_slots(price);
+                                            app.global::<ui::ManagePageAdapter>().set_slot1(slots[0].clone().into());
+                                            app.global::<ui::ManagePageAdapter>().set_slot2(slots[1].clone().into());
+                                            app.global::<ui::ManagePageAdapter>().set_slot3(slots[2].clone().into());
+                                            app.global::<ui::ManagePageAdapter>().set_slot4(slots[3].clone().into());
+                                            app.global::<ui::ManagePageAdapter>().set_slot5(slots[4].clone().into());
+                                            app.global::<ui::ManagePageAdapter>().set_slot6(slots[5].clone().into());
+                                            app.global::<ui::ManagePageAdapter>().set_slot7(slots[6].clone().into());
+                                            app.global::<ui::ManagePageAdapter>().set_slot8(slots[7].clone().into());
+                                        } else {
+                                            clear_manage_slots(&app);
+                                        }
+                                        if let Some(ref pt) = image.sample_id {
+                                            app.global::<ui::ManagePageAdapter>().set_project_type_display(project_type_display(pt).into());
+                                        } else {
+                                            app.global::<ui::ManagePageAdapter>().set_project_type_display("".into());
+                                    }
+                                } else {
+                                    clear_manage_slots(&app);
+                                }
+                            } else {
+                                clear_manage_slots(&app);
+                            }
+                        } else {
+                            clear_manage_slots(&app);
+                        }
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to load image {}: {}", path.display(), e);
+                            app.global::<ui::PricingPageAdapter>().set_current_image_path("".into());
+                        }
+                    }
+                }
+            }
+        }
+    });
+    
     app.run()?;
     
     Ok(())
