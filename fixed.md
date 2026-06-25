@@ -1067,3 +1067,233 @@ match self.db.find_image_by_name(plan_id, &file_name) {
 2. 如果找到现有记录，更新其状态，不创建新记录
 3. 保留源文件，只更新数据库记录
 4. 确保图片在同一时间只有一个状态
+
+---
+
+## 39. 已标价图片按项目类型分类显示
+
+**问题描述**: 已标价图片需要按血型/抗筛/交叉配血分类显示，而不是全部混在一起。
+
+**解决方案**: 
+1. 在 `ImageCategoryData` 结构体中添加子分类相关属性
+2. 修改UI组件支持嵌套子分类展开
+3. 实现子分类展开/折叠逻辑
+
+### 1. 数据结构扩展（app.slint）
+```slint
+export struct ImageCategoryData {
+    // 原有属性...
+    
+    // 子分类属性
+    has-subcategories: bool,
+    subcategory-names: [string],
+    subcategory-counts: [int],
+    subcategory-expanded: [bool],
+    subcategory-1-images: [string],
+    subcategory-2-images: [string],
+    subcategory-3-images: [string],
+}
+```
+
+### 2. 数据构建（main.rs）
+```rust
+// 已标价父分类（包含子分类）
+result.push(ui::ImageCategoryData {
+    name: "priced".into(),
+    display_name: format!("已标价 ({})", priced_images.len()).into(),
+    count: priced_images.len() as i32,
+    expanded: priced_expanded,
+    images: Vec::<slint::SharedString>::new().as_slice().into(),
+    // 子分类属性
+    has_subcategories: true,
+    subcategory_names: vec!["血型".into(), "抗筛".into(), "交叉配血".into()].as_slice().into(),
+    subcategory_counts: vec![abo_images.len() as i32, as_images.len() as i32, cm_images.len() as i32].as_slice().into(),
+    subcategory_expanded: vec![abo_expanded, as_expanded, cm_expanded].as_slice().into(),
+    subcategory_1_images: abo_images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+    subcategory_2_images: as_images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+    subcategory_3_images: cm_images.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>().as_slice().into(),
+});
+```
+
+### 3. UI组件支持（app.slint）
+```slint
+// 子分类列表（展开时显示，且有子分类）
+if expanded && has-subcategories: VerticalLayout {
+    // 子分类1
+    Rectangle {
+        height: 30px;
+        sub1-touch := TouchArea {
+            clicked => { root.subcategory-clicked(0); }
+        }
+        // 标题显示...
+    }
+    
+    // 子分类1的图片列表
+    if subcategory-expanded[0] && subcategory-1-images.length > 0: VerticalLayout {
+        for image[j] in subcategory-1-images: Rectangle {
+            // 图片项显示...
+        }
+    }
+}
+```
+
+**关键点**:
+1. 已标价父分类的 `images` 为空，只作为容器
+2. 子分类属性 `has_subcategories: true` 标识有子分类
+3. 每个子分类有独立的展开状态和图片列表
+4. 高度计算需要考虑子分类的展开状态
+
+---
+
+## 40. 子分类图片点击不显示图片
+
+**问题描述**: 点击子分类中的图片名，图片不显示。
+
+**原因**: 
+1. 子分类的 `image-clicked` 回调只传递了子分类内的索引，没有传递子分类索引
+2. `ManagePageAdapter` 无法知道是哪个子分类的图片被点击
+
+**解决方案**: 
+1. 添加 `subcategory-image-clicked` 回调，接收三个参数：分类索引、子分类索引、图片索引
+2. 根据子分类索引获取对应的图片列表
+3. 构建正确路径加载图片
+
+```slint
+// UI组件中
+callback subcategory-image-clicked(int, int);  // (子分类索引, 图片索引)
+
+// 子分类图片列表
+for image[j] in subcategory-1-images: Rectangle {
+    image-touch1 := TouchArea {
+        clicked => { root.subcategory-image-clicked(0, j); }
+    }
+}
+```
+
+```rust
+// main.rs中
+app.global::<ui::ManagePageAdapter>().on_subcategory_image_clicked(move |cat_index, sub_index, img_index| {
+    // 更新选中状态
+    app.global::<ui::ManagePageAdapter>().set_selected_subcategory(sub_index);
+    app.global::<ui::ManagePageAdapter>().set_selected_subcategory_image(img_index);
+    
+    // 根据子分类索引获取图片列表
+    let images: Vec<slint::SharedString> = match sub_index {
+        0 => category.subcategory_1_images.iter().collect(),
+        1 => category.subcategory_2_images.iter().collect(),
+        2 => category.subcategory_3_images.iter().collect(),
+        _ => Vec::new(),
+    };
+    
+    // 构建路径并加载图片...
+});
+```
+
+**关键点**:
+1. 子分类图片点击需要单独的回调处理
+2. 需要记录当前选中的子分类和图片索引
+3. 子分类的图片在 `priced` 目录下，需要正确构建路径
+
+---
+
+## 41. 子分类高亮同步问题
+
+**问题描述**: 点击血型子分类的第一个图片时，抗筛、交叉配血子分类的第一个图片也被高亮。
+
+**原因**: 所有子分类共享同一个 `selected-image-index` 属性，导致高亮同步。
+
+**解决方案**: 
+1. 添加 `selected-subcategory` 和 `selected-subcategory-image` 属性
+2. 每个子分类独立跟踪选中的图片索引
+3. 高亮判断条件改为 `(selected-subcategory == 子分类索引 && selected-subcategory-image == 图片索引)`
+
+```slint
+// ManagePageAdapter中
+in-out property <int> selected-subcategory: -1;  // 选中的子分类索引 (0,1,2)
+in-out property <int> selected-subcategory-image: -1;  // 选中的子分类内图片索引
+
+// UI组件中
+callback subcategory-image-clicked(int, int);  // (子分类索引, 图片索引)
+in-out property <int> selected-subcategory: -1;
+in-out property <int> selected-subcategory-image: -1;
+
+// 高亮判断
+background: (selected-subcategory == 0 && selected-subcategory-image == j) ? #bbdefb : transparent;
+```
+
+**关键点**:
+1. 每个子分类需要独立的选中状态
+2. 高亮判断需要同时检查子分类索引和图片索引
+3. 点击普通分类时需要清除子分类选中状态
+4. 点击子分类时需要清除普通分类选中状态
+
+---
+
+## 42. 子分类中上一张/下一张高亮不正常
+
+**问题描述**: 在子分类中点击图片后，点击上一张/下一张按钮时图片正常跳转，但高亮不正常显示。
+
+**原因**: `on_next_image` 和 `on_prev_image` 回调只更新了 `current_image_index`，没有更新子分类的选中状态 `selected_subcategory_image`。
+
+**解决方案**: 
+1. 在 `on_next_image` 和 `on_prev_image` 回调中检查当前是否在子分类中浏览
+2. 如果在子分类中浏览，同步更新 `selected_subcategory_image` 状态
+3. 子分类的图片在 `priced` 目录下，需要正确构建路径
+
+```rust
+// on_next_image回调中
+app.global::<ui::PricingPageAdapter>().on_next_image(move || {
+    // ...
+    app.global::<ui::PricingPageAdapter>().set_current_image_index(next_index);
+    app.global::<ui::ManagePageAdapter>().set_current_image_index(next_index);
+    
+    // 检查当前是否在子分类中浏览
+    let selected_subcategory = app.global::<ui::ManagePageAdapter>().get_selected_subcategory();
+    if selected_subcategory >= 0 {
+        // 更新子分类的选中图片索引
+        app.global::<ui::ManagePageAdapter>().set_selected_subcategory_image(next_index);
+    }
+    
+    // 构建路径时，子分类的图片在priced目录下
+    let full_path = if cat_name == "priced" {
+        base_dir_clone.join("plans").join(&plan_name).join("priced").join(file_name.as_str())
+    } else {
+        base_dir_clone.join("plans").join(&plan_name).join(&cat_name).join(file_name.as_str())
+    };
+    // ...
+});
+```
+
+**关键点**:
+1. 需要检查 `selected_subcategory` 判断是否在子分类中浏览
+2. 在子分类中浏览时，需要同步更新 `selected_subcategory_image`
+3. 子分类的图片在 `priced` 目录下，不是子分类名称目录
+4. 点击普通分类时清除子分类选中状态，反之亦然
+
+---
+
+## 总结（更新）
+
+| 问题类型 | 数量 | 主要原因 |
+|---------|------|---------|
+| Slint语法/API | 4 | 不熟悉Slint特有语法 |
+| Rust类型系统 | 4 | 库版本差异、trait导入、借用移动 |
+| 测试逻辑 | 2 | 状态管理理解错误、断言过时 |
+| 依赖配置 | 2 | dev-dependencies、edition |
+| 上游问题 | 1 | Slint/ICU4X已知bug |
+| Slint布局/模型 | 5 | Flickable宽度传播、GridLayout空模型崩溃、ListView动态高度、ScrollView缺失、高度计算不一致 |
+| UI样式/主题 | 2 | native主题输入框显示问题、窗口宽度累加 |
+| 数据一致性 | 2 | 图片状态多源冲突、DB路径不一致 |
+| 渲染性能 | 1 | 700+项for循环导致黑屏 |
+| 回调/线程 | 2 | thread::spawn不可靠、回调未刷新数据 |
+| 路径处理 | 2 | 混用斜杠、import路径错误 |
+| 回调逻辑 | 1 | 未调用plan_manager.create_plan |
+| 结构体设计 | 1 | 未实现Clone、字段未公开 |
+| 子分类功能 | 4 | 嵌套结构设计、高亮状态同步、回调参数缺失、路径构建错误 |
+
+**关键经验（新增）**:
+28. Slint嵌套结构需要在父组件中定义子组件属性
+29. 子分类需要独立的选中状态跟踪
+30. 回调参数需要包含足够的上下文信息
+31. 子分类图片路径可能与普通分类不同
+32. 状态同步需要考虑所有可能的操作路径
