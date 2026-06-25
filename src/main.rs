@@ -673,6 +673,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // 更新ManagePageAdapter的高亮索引
                 app.global::<ui::ManagePageAdapter>().set_current_image_index(next_index);
                 
+                // 检查当前是否在子分类中浏览
+                let selected_subcategory = app.global::<ui::ManagePageAdapter>().get_selected_subcategory();
+                if selected_subcategory >= 0 {
+                    // 更新子分类的选中图片索引
+                    app.global::<ui::ManagePageAdapter>().set_selected_subcategory_image(next_index);
+                }
+                
                 if let Some(file_name) = images.iter().nth(next_index as usize) {
                     // 构建完整路径
                     let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
@@ -681,7 +688,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     
                     if let Some(category) = categories.iter().nth(cat_index as usize) {
                         let cat_name = category.name.to_string();
-                        let full_path = base_dir_clone.join("plans").join(&plan_name).join(&cat_name).join(file_name.as_str());
+                        // 子分类的图片在priced目录下
+                        let full_path = if cat_name == "priced" {
+                            base_dir_clone.join("plans").join(&plan_name).join("priced").join(file_name.as_str())
+                        } else {
+                            base_dir_clone.join("plans").join(&plan_name).join(&cat_name).join(file_name.as_str())
+                        };
                         let path_str = full_path.display().to_string();
                         
                         app.global::<ui::PricingPageAdapter>().set_current_image_path(path_str.clone().into());
@@ -714,6 +726,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // 更新ManagePageAdapter的高亮索引
                 app.global::<ui::ManagePageAdapter>().set_current_image_index(prev_index);
                 
+                // 检查当前是否在子分类中浏览
+                let selected_subcategory = app.global::<ui::ManagePageAdapter>().get_selected_subcategory();
+                if selected_subcategory >= 0 {
+                    // 更新子分类的选中图片索引
+                    app.global::<ui::ManagePageAdapter>().set_selected_subcategory_image(prev_index);
+                }
+                
                 let images = app.global::<ui::PricingPageAdapter>().get_images();
                 if let Some(file_name) = images.iter().nth(prev_index as usize) {
                     // 构建完整路径
@@ -723,7 +742,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     
                     if let Some(category) = categories.iter().nth(cat_index as usize) {
                         let cat_name = category.name.to_string();
-                        let full_path = base_dir_clone.join("plans").join(&plan_name).join(&cat_name).join(file_name.as_str());
+                        // 子分类的图片在priced目录下
+                        let full_path = if cat_name == "priced" {
+                            base_dir_clone.join("plans").join(&plan_name).join("priced").join(file_name.as_str())
+                        } else {
+                            base_dir_clone.join("plans").join(&plan_name).join(&cat_name).join(file_name.as_str())
+                        };
                         let path_str = full_path.display().to_string();
                         
                         app.global::<ui::PricingPageAdapter>().set_current_image_path(path_str.clone().into());
@@ -954,6 +978,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             app.global::<ui::ManagePageAdapter>().set_selected_image(index);
             app.global::<ui::ManagePageAdapter>().set_current_image_index(index);
             
+            // 清除子分类选中状态（因为点击的是普通分类）
+            app.global::<ui::ManagePageAdapter>().set_selected_subcategory(-1);
+            app.global::<ui::ManagePageAdapter>().set_selected_subcategory_image(-1);
+            
             let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
             if plan_name.is_empty() { return; }
             let pricing_plan_id = app.global::<ui::PricingPageAdapter>().get_plan_id();
@@ -1049,6 +1077,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             app.global::<ui::ManagePageAdapter>().set_selected_subcategory(sub_index);
             app.global::<ui::ManagePageAdapter>().set_selected_subcategory_image(img_index);
             app.global::<ui::ManagePageAdapter>().set_current_category_index(cat_index);
+            app.global::<ui::ManagePageAdapter>().set_current_image_index(img_index);
+            
+            // 清除普通分类的选中状态
+            app.global::<ui::ManagePageAdapter>().set_selected_image(-1);
             
             let categories = app.global::<ui::ManagePageAdapter>().get_categories();
             if let Some(category) = categories.iter().nth(cat_index as usize) {
