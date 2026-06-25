@@ -106,6 +106,24 @@ pub fn get_excel_headers(path: &Path) -> Result<Vec<String>, String> {
     Ok(headers)
 }
 
+/// 写入Excel文件
+/// 注意：calamine库主要用于读取，写入功能有限
+/// 这里使用简单的CSV格式作为替代方案
+pub fn write_excel_file(path: &Path, rows: &[Vec<String>]) -> Result<(), String> {
+    use std::io::Write;
+    
+    let mut file = std::fs::File::create(path)
+        .map_err(|e| format!("创建文件失败: {}", e))?;
+    
+    for row in rows {
+        let line = row.join("\t");
+        writeln!(file, "{}", line)
+            .map_err(|e| format!("写入数据失败: {}", e))?;
+    }
+    
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

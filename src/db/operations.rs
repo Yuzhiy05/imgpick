@@ -366,6 +366,143 @@ impl Database {
         })?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
+
+    // ============ Excel配对功能新增方法 ============
+
+    /// 按价位查询已标价图片
+    /// 查找price字段包含指定价位的图片
+    pub fn get_images_by_price(&self, plan_id: i64, price: &str) -> Result<Vec<Image>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, plan_id, file_name, file_path, category, group_name, special_code, price, sample_id, created_at 
+             FROM images 
+             WHERE plan_id = ?1 AND category = 'priced' AND price LIKE ?2"
+        )?;
+        let price_pattern = format!("%{}%", price);
+        let rows = stmt.query_map(params![plan_id, price_pattern], |row| {
+            Ok(Image {
+                id: row.get(0)?,
+                plan_id: row.get(1)?,
+                file_name: row.get(2)?,
+                file_path: row.get(3)?,
+                category: ImageCategory::from_str(&row.get::<_, String>(4)?).unwrap(),
+                group_name: row.get(5)?,
+                special_code: row.get(6)?,
+                price: row.get(7)?,
+                sample_id: row.get(8)?,
+                created_at: row.get(9)?,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// 按种类和价位查询已标价图片
+    pub fn get_images_by_category_and_price(&self, plan_id: i64, category: &str, price: &str) -> Result<Vec<Image>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, plan_id, file_name, file_path, category, group_name, special_code, price, sample_id, created_at 
+             FROM images 
+             WHERE plan_id = ?1 AND category = 'priced' AND sample_id = ?2 AND price LIKE ?3"
+        )?;
+        let price_pattern = format!("%{}%", price);
+        let rows = stmt.query_map(params![plan_id, category, price_pattern], |row| {
+            Ok(Image {
+                id: row.get(0)?,
+                plan_id: row.get(1)?,
+                file_name: row.get(2)?,
+                file_path: row.get(3)?,
+                category: ImageCategory::from_str(&row.get::<_, String>(4)?).unwrap(),
+                group_name: row.get(5)?,
+                special_code: row.get(6)?,
+                price: row.get(7)?,
+                sample_id: row.get(8)?,
+                created_at: row.get(9)?,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// 获取Excel数据及其配对的图片信息
+    pub fn get_excel_data_with_pairs(&self, plan_id: i64) -> Result<Vec<(ExcelData, Option<Image>)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT e.id, e.plan_id, e.sample_id, e.data_json,
+                    i.id, i.file_name, i.file_path, i.category, i.price
+             FROM excel_data e
+             LEFT JOIN image_excel_pairs p ON e.id = p.excel_id
+             LEFT JOIN images i ON p.image_id = i.id
+             WHERE e.plan_id = ?1
+             ORDER BY e.id"
+        )?;
+        
+        let rows = stmt.query_map(params![plan_id], |row| {
+            let excel_data = ExcelData {
+                id: row.get(0)?,
+                plan_id: row.get(1)?,
+                sample_id: row.get(2)?,
+                data_json: row.get(3)?,
+            };
+            
+            let image = if let Ok(image_id) = row.get::<_, i64>(4) {
+                Some(Image {
+                    id: image_id,
+                    plan_id: excel_data.plan_id,
+                    file_name: row.get(5)?,
+                    file_path: row.get(6)?,
+                    category: ImageCategory::from_str(&row.get::<_, String>(7)?).unwrap(),
+                    group_name: None,
+                    special_code: None,
+                    price: row.get(8)?,
+                    sample_id: Some(excel_data.sample_id.clone()),
+                    created_at: String::new(),
+                })
+            } else {
+                None
+            };
+            
+            Ok((excel_data, image))
+        })?;
+        
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// 获取所有已标价图片，按价位分组
+    pub fn get_priced_images_grouped(&self, plan_id: i64) -> Result<std::collections::HashMap<String, Vec<Image>>> {
+        let images = self.get_images_by_category(plan_id, ImageCategory::Priced)?;
+        let mut grouped = std::collections::HashMap::new();
+        
+        for image in images {
+            if let Some(ref price) = image.price {
+                let slots: Vec<&str> = price.split(',').collect();
+                for (i, slot) in slots.iter().enumerate() {
+                    if !slot.is_empty() && *slot != "-" {
+                        let key = format!("{}_{}", i + 1, slot);
+                        grouped.entry(key).or_insert_with(Vec::new).push(image.clone());
+                    }
+                }
+            }
+        }
+        
+        Ok(grouped)
+    }
+
+    /// 批量创建Excel数据
+    pub fn batch_create_excel_data(&self, plan_id: i64, data_list: &[(String, String)]) -> Result<Vec<i64>> {
+        let mut ids = Vec::new();
+        for (sample_id, data_json) in data_list {
+            let id = self.create_excel_data(plan_id, sample_id, data_json)?;
+            ids.push(id);
+        }
+        Ok(ids)
+    }
+
+    /// 批量创建图片-Excel配对
+    pub fn batch_create_pairs(&self, pairs: &[(i64, i64)]) -> Result<usize> {
+        let mut count = 0;
+        for (image_id, excel_id) in pairs {
+            if self.create_pair(*image_id, *excel_id).is_ok() {
+                count += 1;
+            }
+        }
+        Ok(count)
+    }
 }
 
 #[cfg(test)]
@@ -512,5 +649,226 @@ mod tests {
         db.delete_pair(pair_id).unwrap();
         let pairs = db.get_pairs_by_plan(plan_id).unwrap();
         assert_eq!(pairs.len(), 0);
+    }
+
+    // ============ Excel配对功能新增测试 ============
+
+    #[test]
+    fn test_get_images_by_price() {
+        let db = setup_db();
+        let plan_id = db.create_plan("Test Plan").unwrap();
+        
+        // 创建多个已标价图片
+        let image1 = Image {
+            id: 0,
+            plan_id,
+            file_name: "img1.jpg".to_string(),
+            file_path: "C:\\img1.jpg".to_string(),
+            category: ImageCategory::Priced,
+            group_name: None,
+            special_code: None,
+            price: Some("-,-,4+,-,4+,4+,-,-".to_string()),
+            sample_id: Some("Abo".to_string()),
+            created_at: String::new(),
+        };
+        let image2 = Image {
+            id: 0,
+            plan_id,
+            file_name: "img2.jpg".to_string(),
+            file_path: "C:\\img2.jpg".to_string(),
+            category: ImageCategory::Priced,
+            group_name: None,
+            special_code: None,
+            price: Some("4+,-,4+,-,-,4+,-,-".to_string()),
+            sample_id: Some("Abo".to_string()),
+            created_at: String::new(),
+        };
+        let image3 = Image {
+            id: 0,
+            plan_id,
+            file_name: "img3.jpg".to_string(),
+            file_path: "C:\\img3.jpg".to_string(),
+            category: ImageCategory::Priced,
+            group_name: None,
+            special_code: None,
+            price: Some("-,-,-,-,-,-,-,-".to_string()),
+            sample_id: Some("Abo".to_string()),
+            created_at: String::new(),
+        };
+        
+        db.create_image(&image1).unwrap();
+        db.create_image(&image2).unwrap();
+        db.create_image(&image3).unwrap();
+        
+        // 查询包含"4+"的图片
+        let images = db.get_images_by_price(plan_id, "4+").unwrap();
+        assert_eq!(images.len(), 2); // image1 和 image2 包含 "4+"
+        
+        // 查询包含"3+"的图片
+        let images = db.get_images_by_price(plan_id, "3+").unwrap();
+        assert_eq!(images.len(), 0); // 没有包含 "3+" 的图片
+    }
+
+    #[test]
+    fn test_get_images_by_category_and_price() {
+        let db = setup_db();
+        let plan_id = db.create_plan("Test Plan").unwrap();
+        
+        // 创建血型图片
+        let image_abo = Image {
+            id: 0,
+            plan_id,
+            file_name: "abo.jpg".to_string(),
+            file_path: "C:\\abo.jpg".to_string(),
+            category: ImageCategory::Priced,
+            group_name: None,
+            special_code: None,
+            price: Some("-,-,4+,-,4+,4+,-,-".to_string()),
+            sample_id: Some("Abo".to_string()),
+            created_at: String::new(),
+        };
+        
+        // 创建抗筛图片
+        let image_as = Image {
+            id: 0,
+            plan_id,
+            file_name: "as.jpg".to_string(),
+            file_path: "C:\\as.jpg".to_string(),
+            category: ImageCategory::Priced,
+            group_name: None,
+            special_code: None,
+            price: Some("4+,4+".to_string()),
+            sample_id: Some("AS".to_string()),
+            created_at: String::new(),
+        };
+        
+        db.create_image(&image_abo).unwrap();
+        db.create_image(&image_as).unwrap();
+        
+        // 查询血型中包含"4+"的图片
+        let images = db.get_images_by_category_and_price(plan_id, "Abo", "4+").unwrap();
+        assert_eq!(images.len(), 1);
+        assert_eq!(images[0].file_name, "abo.jpg");
+        
+        // 查询抗筛中包含"4+"的图片
+        let images = db.get_images_by_category_and_price(plan_id, "AS", "4+").unwrap();
+        assert_eq!(images.len(), 1);
+        assert_eq!(images[0].file_name, "as.jpg");
+        
+        // 查询交叉配血中包含"4+"的图片
+        let images = db.get_images_by_category_and_price(plan_id, "CM", "4+").unwrap();
+        assert_eq!(images.len(), 0);
+    }
+
+    #[test]
+    fn test_get_excel_data_with_pairs() {
+        let db = setup_db();
+        let plan_id = db.create_plan("Test Plan").unwrap();
+        
+        // 创建图片
+        let image = Image {
+            id: 0,
+            plan_id,
+            file_name: "test.jpg".to_string(),
+            file_path: "C:\\test.jpg".to_string(),
+            category: ImageCategory::Priced,
+            group_name: None,
+            special_code: None,
+            price: Some("-,-,4+,-,4+,4+,-,-".to_string()),
+            sample_id: None,
+            created_at: String::new(),
+        };
+        let image_id = db.create_image(&image).unwrap();
+        
+        // 创建Excel数据
+        let excel_id1 = db.create_excel_data(plan_id, "1K001", r#"{"hole_result":"-,-,4+,-,4+,4+,-,-","test_time":"2026-01-30 14:30:00"}"#).unwrap();
+        let excel_id2 = db.create_excel_data(plan_id, "1K002", r#"{"hole_result":"4+,-,4+,-,-,4+,-,-","test_time":"2026-01-30 14:31:00"}"#).unwrap();
+        
+        // 创建配对
+        db.create_pair(image_id, excel_id1).unwrap();
+        
+        // 获取Excel数据与配对
+        let data = db.get_excel_data_with_pairs(plan_id).unwrap();
+        assert_eq!(data.len(), 2);
+        
+        // 第一行有配对图片
+        let (excel1, image1) = &data[0];
+        assert_eq!(excel1.sample_id, "1K001");
+        assert!(image1.is_some());
+        assert_eq!(image1.as_ref().unwrap().file_name, "test.jpg");
+        
+        // 第二行没有配对图片
+        let (excel2, image2) = &data[1];
+        assert_eq!(excel2.sample_id, "1K002");
+        assert!(image2.is_none());
+    }
+
+    #[test]
+    fn test_batch_create_excel_data() {
+        let db = setup_db();
+        let plan_id = db.create_plan("Test Plan").unwrap();
+        
+        let data_list = vec![
+            ("1K001".to_string(), r#"{"hole_result":"-,-,4+,-,4+,4+,-,-"}"#.to_string()),
+            ("1K002".to_string(), r#"{"hole_result":"4+,-,4+,-,-,4+,-,-"}"#.to_string()),
+            ("1K003".to_string(), r#"{"hole_result":"4+,4+,4+,4+,4+,4+,4+,4+"}"#.to_string()),
+        ];
+        
+        let ids = db.batch_create_excel_data(plan_id, &data_list).unwrap();
+        assert_eq!(ids.len(), 3);
+        
+        // 验证数据已创建
+        let data = db.get_excel_data_by_plan(plan_id).unwrap();
+        assert_eq!(data.len(), 3);
+    }
+
+    #[test]
+    fn test_batch_create_pairs() {
+        let db = setup_db();
+        let plan_id = db.create_plan("Test Plan").unwrap();
+        
+        // 创建图片
+        let image1 = Image {
+            id: 0,
+            plan_id,
+            file_name: "img1.jpg".to_string(),
+            file_path: "C:\\img1.jpg".to_string(),
+            category: ImageCategory::Priced,
+            group_name: None,
+            special_code: None,
+            price: Some("-,-,4+,-,4+,4+,-,-".to_string()),
+            sample_id: None,
+            created_at: String::new(),
+        };
+        let image2 = Image {
+            id: 0,
+            plan_id,
+            file_name: "img2.jpg".to_string(),
+            file_path: "C:\\img2.jpg".to_string(),
+            category: ImageCategory::Priced,
+            group_name: None,
+            special_code: None,
+            price: Some("4+,-,4+,-,-,4+,-,-".to_string()),
+            sample_id: None,
+            created_at: String::new(),
+        };
+        let image_id1 = db.create_image(&image1).unwrap();
+        let image_id2 = db.create_image(&image2).unwrap();
+        
+        // 创建Excel数据
+        let excel_id1 = db.create_excel_data(plan_id, "1K001", r#"{}"#).unwrap();
+        let excel_id2 = db.create_excel_data(plan_id, "1K002", r#"{}"#).unwrap();
+        
+        // 批量创建配对
+        let pairs = vec![
+            (image_id1, excel_id1),
+            (image_id2, excel_id2),
+        ];
+        let count = db.batch_create_pairs(&pairs).unwrap();
+        assert_eq!(count, 2);
+        
+        // 验证配对已创建
+        let all_pairs = db.get_pairs_by_plan(plan_id).unwrap();
+        assert_eq!(all_pairs.len(), 2);
     }
 }

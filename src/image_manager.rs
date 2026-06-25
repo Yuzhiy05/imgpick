@@ -175,6 +175,56 @@ impl ImageManager {
         Ok(updated_image)
     }
 
+    /// 确认标价并设置详细信息（价位和种类）
+    pub fn confirm_pricing_with_details(&self, image_id: i64, price: &str, category: Option<&str>) -> Result<Image, String> {
+        if price.trim().is_empty() {
+            return Err("价位不能为空".to_string());
+        }
+
+        let image = self.db.get_image(image_id)
+            .map_err(|e| format!("获取图片失败: {}", e))?
+            .ok_or_else(|| "图片未找到".to_string())?;
+
+        if image.category != ImageCategory::Pending {
+            return Err("只能确认待标价图片".to_string());
+        }
+
+        // 更新价位
+        self.db.update_image_price(image_id, Some(price))
+            .map_err(|e| format!("更新价位失败: {}", e))?;
+
+        // 更新种类（sample_id字段用于存储种类）
+        if let Some(cat) = category {
+            self.db.update_image_sample_id(image_id, Some(cat))
+                .map_err(|e| format!("更新种类失败: {}", e))?;
+        }
+
+        // 更新状态为已标价
+        self.db.update_image_category(image_id, ImageCategory::Priced)
+            .map_err(|e| format!("更新图片状态失败: {}", e))?;
+
+        let plan = self.db.get_plan(image.plan_id)
+            .map_err(|e| format!("获取计划失败: {}", e))?
+            .ok_or_else(|| "计划未找到".to_string())?;
+
+        let priced_dir = self.base_dir.join(&plan.name).join("priced");
+        std::fs::create_dir_all(&priced_dir)
+            .map_err(|e| format!("创建已标价目录失败: {}", e))?;
+
+        let src_path = Path::new(&image.file_path);
+        let dest_path = file_utils::copy_image_to_dir(src_path, &priced_dir)
+            .map_err(|e| format!("复制图片失败: {}", e))?;
+
+        self.db.update_image_file_name(image_id, &dest_path.file_name().unwrap().to_string_lossy())
+            .map_err(|e| format!("更新文件名失败: {}", e))?;
+
+        let updated_image = self.db.get_image(image_id)
+            .map_err(|e| format!("获取更新后的图片失败: {}", e))?
+            .ok_or_else(|| "图片未找到".to_string())?;
+
+        Ok(updated_image)
+    }
+
     pub fn move_to_processing(&self, image_id: i64) -> Result<Image, String> {
         let image = self.db.get_image(image_id)
             .map_err(|e| format!("获取图片失败: {}", e))?
@@ -420,6 +470,66 @@ impl ImageManager {
 
         Ok(count)
     }
+
+    // ============ Excel配对功能新增方法 ============
+
+    /// 按价位查询已标价图片
+    pub fn get_images_by_price(&self, plan_id: i64, price: &str) -> Result<Vec<Image>, String> {
+        self.db.get_images_by_price(plan_id, price)
+            .map_err(|e| format!("查询图片失败: {}", e))
+    }
+
+    /// 按种类和价位查询已标价图片
+    pub fn get_images_by_category_and_price(&self, plan_id: i64, category: &str, price: &str) -> Result<Vec<Image>, String> {
+        self.db.get_images_by_category_and_price(plan_id, category, price)
+            .map_err(|e| format!("查询图片失败: {}", e))
+    }
+
+    /// 获取所有已标价图片，按价位分组
+    pub fn get_priced_images_grouped(&self, plan_id: i64) -> Result<std::collections::HashMap<String, Vec<Image>>, String> {
+        self.db.get_priced_images_grouped(plan_id)
+            .map_err(|e| format!("获取图片分组失败: {}", e))
+    }
+
+    /// 复制图片到最终结果文件夹
+    pub fn copy_image_to_result(&self, plan_id: i64, image_id: i64, result_dir: &Path) -> Result<String, String> {
+        let image = self.db.get_image(image_id)
+            .map_err(|e| format!("获取图片失败: {}", e))?
+            .ok_or_else(|| "图片未找到".to_string())?;
+
+        if !result_dir.exists() {
+            std::fs::create_dir_all(result_dir)
+                .map_err(|e| format!("创建结果目录失败: {}", e))?;
+        }
+
+        let src_path = Path::new(&image.file_path);
+        if !src_path.exists() {
+            return Err("源图片文件不存在".to_string());
+        }
+
+        let file_name = format!("{}_{}", 
+            image.sample_id.as_deref().unwrap_or("unknown"),
+            image.file_name
+        );
+        let dest_path = result_dir.join(&file_name);
+
+        std::fs::copy(src_path, &dest_path)
+            .map_err(|e| format!("复制文件失败: {}", e))?;
+
+        Ok(dest_path.to_string_lossy().to_string())
+    }
+
+    /// 批量复制图片到结果文件夹
+    pub fn batch_copy_images_to_result(&self, plan_id: i64, image_ids: &[i64], result_dir: &Path) -> Result<Vec<String>, String> {
+        let mut results = Vec::new();
+        
+        for &image_id in image_ids {
+            let path = self.copy_image_to_result(plan_id, image_id, result_dir)?;
+            results.push(path);
+        }
+        
+        Ok(results)
+    }
 }
 
 #[cfg(test)]
@@ -545,5 +655,128 @@ mod tests {
         let priced_image = result.unwrap();
         assert_eq!(priced_image.category, ImageCategory::Priced);
         assert_eq!(priced_image.price, Some("100".to_string()));
+    }
+
+    // ============ Excel配对功能新增测试 ============
+
+    #[test]
+    fn test_get_images_by_price() {
+        let (manager, plan_id, temp_dir) = setup();
+        let db = &manager.db;
+        
+        // 创建多个已标价图片
+        let test_folder = temp_dir.path().join("test_images");
+        std::fs::create_dir_all(&test_folder).unwrap();
+        std::fs::write(test_folder.join("img1.jpg"), b"dummy").unwrap();
+        std::fs::write(test_folder.join("img2.jpg"), b"dummy").unwrap();
+        std::fs::write(test_folder.join("img3.jpg"), b"dummy").unwrap();
+        
+        let images = manager.import_images_from_folder(plan_id, &test_folder).unwrap();
+        
+        // 移动到待标价并确认标价
+        for (i, image) in images.iter().enumerate() {
+            let pending = manager.move_to_pending(image.id).unwrap();
+            let price = match i {
+                0 => "-,-,4+,-,4+,4+,-,-",
+                1 => "4+,-,4+,-,-,4+,-,-",
+                _ => "-,-,-,-,-,-,-,-",
+            };
+            manager.confirm_pricing_with_details(pending.id, price, Some("Abo")).unwrap();
+        }
+        
+        // 查询包含"4+"的图片
+        let result = manager.get_images_by_price(plan_id, "4+").unwrap();
+        assert_eq!(result.len(), 2);
+        
+        // 查询包含"3+"的图片
+        let result = manager.get_images_by_price(plan_id, "3+").unwrap();
+        assert_eq!(result.len(), 0);
+    }
+
+    #[test]
+    fn test_get_images_by_category_and_price() {
+        let (manager, plan_id, temp_dir) = setup();
+        let db = &manager.db;
+        
+        // 创建测试图片
+        let test_folder = temp_dir.path().join("test_images");
+        std::fs::create_dir_all(&test_folder).unwrap();
+        std::fs::write(test_folder.join("abo.jpg"), b"dummy").unwrap();
+        std::fs::write(test_folder.join("as.jpg"), b"dummy").unwrap();
+        
+        let images = manager.import_images_from_folder(plan_id, &test_folder).unwrap();
+        
+        // 移动到待标价并确认标价
+        let pending_abo = manager.move_to_pending(images[0].id).unwrap();
+        manager.confirm_pricing_with_details(pending_abo.id, "-,-,4+,-,4+,4+,-,-", Some("Abo")).unwrap();
+        
+        let pending_as = manager.move_to_pending(images[1].id).unwrap();
+        manager.confirm_pricing_with_details(pending_as.id, "4+,4+", Some("AS")).unwrap();
+        
+        // 查询血型中包含"4+"的图片
+        let result = manager.get_images_by_category_and_price(plan_id, "Abo", "4+").unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].file_name, "abo.jpg");
+        
+        // 查询抗筛中包含"4+"的图片
+        let result = manager.get_images_by_category_and_price(plan_id, "AS", "4+").unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].file_name, "as.jpg");
+    }
+
+    #[test]
+    fn test_copy_image_to_result() {
+        let (manager, plan_id, temp_dir) = setup();
+        let db = &manager.db;
+        
+        // 创建测试图片
+        let test_folder = temp_dir.path().join("test_images");
+        std::fs::create_dir_all(&test_folder).unwrap();
+        std::fs::write(test_folder.join("test.jpg"), b"dummy image content").unwrap();
+        
+        let images = manager.import_images_from_folder(plan_id, &test_folder).unwrap();
+        let image_id = images[0].id;
+        
+        // 移动到待标价并确认标价
+        let pending = manager.move_to_pending(image_id).unwrap();
+        manager.confirm_pricing_with_details(pending.id, "-,-,4+,-,4+,4+,-,-", Some("Abo")).unwrap();
+        
+        // 复制到结果文件夹
+        let result_dir = temp_dir.path().join("result");
+        let result_path = manager.copy_image_to_result(plan_id, pending.id, &result_dir).unwrap();
+        
+        assert!(Path::new(&result_path).exists());
+        assert!(result_path.contains("test.jpg"));
+    }
+
+    #[test]
+    fn test_batch_copy_images_to_result() {
+        let (manager, plan_id, temp_dir) = setup();
+        let db = &manager.db;
+        
+        // 创建多个测试图片
+        let test_folder = temp_dir.path().join("test_images");
+        std::fs::create_dir_all(&test_folder).unwrap();
+        std::fs::write(test_folder.join("img1.jpg"), b"dummy1").unwrap();
+        std::fs::write(test_folder.join("img2.jpg"), b"dummy2").unwrap();
+        
+        let images = manager.import_images_from_folder(plan_id, &test_folder).unwrap();
+        
+        // 移动到待标价并确认标价
+        let mut image_ids = Vec::new();
+        for image in images {
+            let pending = manager.move_to_pending(image.id).unwrap();
+            manager.confirm_pricing_with_details(pending.id, "-,-,4+,-,4+,4+,-,-", Some("Abo")).unwrap();
+            image_ids.push(pending.id);
+        }
+        
+        // 批量复制到结果文件夹
+        let result_dir = temp_dir.path().join("result");
+        let results = manager.batch_copy_images_to_result(plan_id, &image_ids, &result_dir).unwrap();
+        
+        assert_eq!(results.len(), 2);
+        for path in results {
+            assert!(Path::new(&path).exists());
+        }
     }
 }
