@@ -472,6 +472,31 @@ export global ManagePageAdapter {
     callback subcategory-image-clicked(int, int, int);  // (分类索引, 子分类索引, 图片索引)
 }
 
+// Excel行数据结构
+export struct ExcelRowData {
+    index: int,
+    sample-id: string,
+    hole-result: string,
+    test-time: string,
+    matched-image: string,
+    category: string,
+}
+
+// Excel配对页面适配器（全局单例）
+export global ExcelPageAdapter {
+    // Excel数据
+    in-out property <int> plan-id: 0;
+    in-out property <string> plan-name: "";
+    in-out property <[ExcelRowData]> excel-rows: [];
+    in-out property <int> selected-row: -1;
+    in-out property <string> status-message: "";
+    
+    // 回调
+    callback import-excel();
+    callback export-result();
+    callback select-row(int);
+}
+
 // 计划管理页面
 export component PlanPage inherits Rectangle {
     in-out property <int> plan-id: 0;
@@ -1730,40 +1755,279 @@ export component ManagePage inherits Rectangle {
 }
 
 // Excel配对页面
-export component ExcelPage inherits VerticalBox {
+export component ExcelPage inherits Rectangle {
     in-out property <int> plan-id: 0;
 
-    Text {
-        text: "Excel配对";
-        font-size: 18px;
-        font-weight: 700;
-        color: #1976D2;
-    }
-
-    HorizontalLayout {
+    VerticalLayout {
+        padding: 8px;
         spacing: 8px;
 
-        Button {
-            text: "导入Excel";
-            width: 80px;
+        // 标题栏
+        HorizontalLayout {
+            height: 36px;
+            spacing: 12px;
+
+            Text {
+                text: "Excel配对";
+                font-size: 18px;
+                font-weight: 700;
+                color: #1976D2;
+                vertical-alignment: center;
+            }
+
+            Rectangle { horizontal-stretch: 1; }
+
+            Button {
+                text: "导入Excel";
+                width: 80px;
+                clicked => {
+                    ExcelPageAdapter.import-excel();
+                }
+            }
+
+            Button {
+                text: "导出结果";
+                width: 80px;
+                clicked => {
+                    ExcelPageAdapter.export-result();
+                }
+            }
         }
 
-        Button {
-            text: "导出结果";
-            width: 80px;
+        // 状态消息
+        if ExcelPageAdapter.status-message != "": Rectangle {
+            height: 30px;
+            background: #e8f5e9;
+            border-radius: 4px;
+
+            Text {
+                text: ExcelPageAdapter.status-message;
+                color: #2e7d32;
+                font-size: 12px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
         }
-    }
 
-    Rectangle {
-        vertical-stretch: 1;
-        background: #f0f0f0;
-        border-radius: 4px;
+        // 数据表格区域
+        Rectangle {
+            vertical-stretch: 1;
+            background: white;
+            border-width: 1px;
+            border-color: #e0e0e0;
+            border-radius: 4px;
+            clip: true;
 
-        Text {
-            text: "Excel数据和配对区域";
-            horizontal-alignment: center;
-            vertical-alignment: center;
-            color: #999;
+            if ExcelPageAdapter.excel-rows.length == 0: VerticalLayout {
+                alignment: center;
+                spacing: 8px;
+
+                Text {
+                    text: "暂无Excel数据";
+                    font-size: 14px;
+                    color: #999;
+                    horizontal-alignment: center;
+                }
+
+                Text {
+                    text: "请点击 导入Excel 按钮导入数据";
+                    font-size: 12px;
+                    color: #bdbdbd;
+                    horizontal-alignment: center;
+                }
+            }
+
+            if ExcelPageAdapter.excel-rows.length > 0: VerticalLayout {
+                padding: 0;
+                spacing: 0;
+
+                // 表头
+                Rectangle {
+                    height: 36px;
+                    background: #1976D2;
+                    border-radius: 4px;
+
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        spacing: 2px;
+
+                        Text { text: "序号"; width: 50px; color: white; font-weight: 600; vertical-alignment: center; font-size: 13px; }
+                        Text { text: "样本编号"; width: 100px; color: white; font-weight: 600; vertical-alignment: center; font-size: 13px; }
+                        Text { text: "孔位结果"; width: 250px; color: white; font-weight: 600; vertical-alignment: center; font-size: 13px; }
+                        Text { text: "考察时间"; width: 160px; color: white; font-weight: 600; vertical-alignment: center; font-size: 13px; }
+                        Text { text: "种类"; width: 80px; color: white; font-weight: 600; vertical-alignment: center; font-size: 13px; }
+                        Text { text: "匹配图片"; width: 150px; color: white; font-weight: 600; vertical-alignment: center; font-size: 13px; }
+                        Text { text: "操作"; width: 100px; color: white; font-weight: 600; vertical-alignment: center; font-size: 13px; }
+                    }
+                }
+
+                // 数据行
+                ScrollView {
+                    vertical-stretch: 1;
+
+                    VerticalLayout {
+                        spacing: 1px;
+
+                        for row[i] in ExcelPageAdapter.excel-rows: Rectangle {
+                            height: 34px;
+                            background: i == ExcelPageAdapter.selected-row ? #e3f2fd : (mod(i, 2) == 0 ? white : #fafafa);
+                            border-width: 1px;
+                            border-color: #e0e0e0;
+
+                            TouchArea {
+                                clicked => {
+                                    ExcelPageAdapter.select-row(i);
+                                }
+                            }
+
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                padding-right: 8px;
+                                spacing: 2px;
+
+                                // 序号
+                                Text {
+                                    text: row.index;
+                                    width: 50px;
+                                    vertical-alignment: center;
+                                    font-size: 13px;
+                                }
+
+                                // 样本编号
+                                Text {
+                                    text: row.sample-id;
+                                    width: 100px;
+                                    vertical-alignment: center;
+                                    font-size: 13px;
+                                    color: #1976D2;
+                                    font-weight: 600;
+                                }
+
+                                // 孔位结果
+                                Text {
+                                    text: row.hole-result;
+                                    width: 250px;
+                                    vertical-alignment: center;
+                                    font-size: 12px;
+                                    overflow: elide;
+                                }
+
+                                // 考察时间
+                                Text {
+                                    text: row.test-time;
+                                    width: 160px;
+                                    vertical-alignment: center;
+                                    font-size: 13px;
+                                }
+
+                                // 种类
+                                Rectangle {
+                                    width: 80px;
+                                    height: 24px;
+                                    background: row.category == "Abo" ? #e3f2fd : (row.category == "AS" ? #fff3e0 : (row.category == "CM" ? #e8f5e9 : #f5f5f5));
+                                    border-radius: 3px;
+
+                                    Text {
+                                        text: row.category == "Abo" ? "血型" : (row.category == "AS" ? "抗筛" : (row.category == "CM" ? "交叉配血" : "未知"));
+                                        font-size: 12px;
+                                        color: row.category == "Abo" ? #1976D2 : (row.category == "AS" ? #e65100 : (row.category == "CM" ? #2e7d32 : #999));
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+
+                                // 匹配图片
+                                Text {
+                                    text: row.matched-image != "" ? row.matched-image : "未匹配";
+                                    width: 150px;
+                                    vertical-alignment: center;
+                                    font-size: 10px;
+                                    color: row.matched-image != "" ? #333 : #999;
+                                    overflow: elide;
+                                }
+
+                                // 操作按钮
+                                HorizontalLayout {
+                                    width: 100px;
+                                    spacing: 4px;
+                                    alignment: center;
+
+                                    Rectangle {
+                                        width: 45px;
+                                        height: 22px;
+                                        background: #e3f2fd;
+                                        border-radius: 3px;
+
+                                        Text {
+                                            text: "选择";
+                                            font-size: 10px;
+                                            color: #1976D2;
+                                            horizontal-alignment: center;
+                                            vertical-alignment: center;
+                                        }
+
+                                        TouchArea {
+                                            clicked => {
+                                                // TODO: 打开图片选择对话框
+                                            }
+                                        }
+                                    }
+
+                                    if row.matched-image != "": Rectangle {
+                                        width: 45px;
+                                        height: 22px;
+                                        background: #ffebee;
+                                        border-radius: 3px;
+
+                                        Text {
+                                            text: "清除";
+                                            font-size: 10px;
+                                            color: #c62828;
+                                            horizontal-alignment: center;
+                                            vertical-alignment: center;
+                                        }
+
+                                        TouchArea {
+                                            clicked => {
+                                                // TODO: 清除匹配
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 底部信息栏
+        Rectangle {
+            height: 24px;
+            background: #f5f5f5;
+            border-radius: 4px;
+
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+
+                Text {
+                    text: "共 " + ExcelPageAdapter.excel-rows.length + " 条数据";
+                    font-size: 11px;
+                    color: #666;
+                    vertical-alignment: center;
+                }
+
+                Rectangle { horizontal-stretch: 1; }
+
+                if ExcelPageAdapter.selected-row >= 0: Text {
+                    text: "已选择: " + ExcelPageAdapter.excel-rows[ExcelPageAdapter.selected-row].sample-id;
+                    font-size: 11px;
+                    color: #1976D2;
+                    vertical-alignment: center;
+                }
+            }
         }
     }
 }

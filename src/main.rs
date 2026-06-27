@@ -1167,6 +1167,133 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
     
+    // ExcelPage回调
+    let weak_clone = weak.clone();
+    let db_clone = db.clone();
+    let base_dir_clone = base_dir.clone();
+    app.global::<ui::ExcelPageAdapter>().on_import_excel(move || {
+        if let Some(app) = weak_clone.upgrade() {
+            let plan_id = app.global::<ui::PricingPageAdapter>().get_plan_id();
+            if plan_id == 0 {
+                app.global::<ui::ExcelPageAdapter>().set_status_message("请先选择一个计划".into());
+                return;
+            }
+            
+            // 打开文件对话框
+            let file_dialog = rfd::FileDialog::new()
+                .add_filter("Excel文件", &["xlsx", "xls"])
+                .set_title("选择Excel文件");
+            
+            if let Some(file_path) = file_dialog.pick_file() {
+                let excel_manager = excel_manager::ExcelManager::new(db_clone.clone());
+                
+                match excel_manager.import_excel(plan_id as i64, &file_path) {
+                    Ok(data) => {
+                        let count = data.len();
+                        
+                        // 将导入的数据转换为UI显示格式
+                        let mut excel_rows = Vec::new();
+                        for (i, excel_data) in data.iter().enumerate() {
+                            let json_value: serde_json::Value = serde_json::from_str(&excel_data.data_json)
+                                .unwrap_or_else(|_| serde_json::json!({}));
+                            
+                            // 尝试从不同字段名获取孔位结果
+                            let hole_result = json_value.get("hole_result")
+                                .or_else(|| json_value.get("孔位结果"))
+                                .or_else(|| json_value.get("testHoleResult"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            
+                            // 尝试从不同字段名获取考察时间
+                            let test_time = json_value.get("test_time")
+                                .or_else(|| json_value.get("考察时间"))
+                                .or_else(|| json_value.get("testTime"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            
+                            // 根据样本编号推断种类
+                            let category = if excel_data.sample_id.starts_with("1K") || excel_data.sample_id.starts_with("1KY") {
+                                "Abo".to_string()
+                            } else if excel_data.sample_id.starts_with("2K") || excel_data.sample_id.starts_with("2KY") {
+                                "AS".to_string()
+                            } else if excel_data.sample_id.starts_with("3K") || excel_data.sample_id.starts_with("3KY") {
+                                "CM".to_string()
+                            } else {
+                                "Unknown".to_string()
+                            };
+                            
+                            eprintln!("导入数据 {}: 样本={}, 孔位={}, 时间={}", i + 1, excel_data.sample_id, hole_result, test_time);
+                            
+                            excel_rows.push(ui::ExcelRowData {
+                                index: (i + 1) as i32,
+                                sample_id: excel_data.sample_id.clone().into(),
+                                hole_result: hole_result.into(),
+                                test_time: test_time.into(),
+                                matched_image: "".into(),
+                                category: category.into(),
+                            });
+                        }
+                        
+                        // 更新UI
+                        app.global::<ui::ExcelPageAdapter>().set_excel_rows(excel_rows.as_slice().into());
+                        app.global::<ui::ExcelPageAdapter>().set_status_message(
+                            format!("成功导入 {} 条数据", count).into()
+                        );
+                    }
+                    Err(e) => {
+                        app.global::<ui::ExcelPageAdapter>().set_status_message(
+                            format!("导入失败: {}", e).into()
+                        );
+                    }
+                }
+            }
+        }
+    });
+    
+    let weak_clone = weak.clone();
+    let db_clone = db.clone();
+    let base_dir_clone = base_dir.clone();
+    app.global::<ui::ExcelPageAdapter>().on_export_result(move || {
+        if let Some(app) = weak_clone.upgrade() {
+            let plan_id = app.global::<ui::PricingPageAdapter>().get_plan_id();
+            if plan_id == 0 {
+                app.global::<ui::ExcelPageAdapter>().set_status_message("请先选择一个计划".into());
+                return;
+            }
+            
+            let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
+            if plan_name.is_empty() {
+                app.global::<ui::ExcelPageAdapter>().set_status_message("请先选择一个计划".into());
+                return;
+            }
+            
+            let output_dir = base_dir_clone.join("plans").join(&plan_name).join("final");
+            let excel_manager = excel_manager::ExcelManager::new(db_clone.clone());
+            
+            match excel_manager.export_match_result(plan_id as i64, &output_dir.join("匹配结果.xlsx")) {
+                Ok(count) => {
+                    app.global::<ui::ExcelPageAdapter>().set_status_message(
+                        format!("成功导出 {} 条匹配结果", count).into()
+                    );
+                }
+                Err(e) => {
+                    app.global::<ui::ExcelPageAdapter>().set_status_message(
+                        format!("导出失败: {}", e).into()
+                    );
+                }
+            }
+        }
+    });
+    
+    let weak_clone = weak.clone();
+    app.global::<ui::ExcelPageAdapter>().on_select_row(move |index| {
+        if let Some(app) = weak_clone.upgrade() {
+            app.global::<ui::ExcelPageAdapter>().set_selected_row(index);
+        }
+    });
+    
     app.run()?;
     
     Ok(())
