@@ -559,6 +559,37 @@ tokio = { version = "1", features = ["full"] }
 3. 图片复制操作需显示进度
 4. Excel解析需处理各种格式异常
 
+## app.slint 无法拆分的原因
+
+### 问题描述
+尝试将 `app.slint`（约2379行）拆分为多个文件时失败，无法编译通过。
+
+### 失败原因
+
+1. **Slint 全局单例引用问题**
+   - `PlanPageAdapter`、`ManagePageAdapter`、`PricingPageAdapter`、`ExcelPageAdapter` 等全局单例定义在 `app.slint` 中
+   - 当将这些全局单例移到单独文件（如 `globals.slint`）后，`main.rs` 中的 `app.global::<ui::PlanPageAdapter>()` 无法找到这些类型
+   - Slint 编译器生成的 Rust 代码会将所有类型放在 `ui` 模块中，但跨文件引用时路径解析失败
+
+2. **Slint 导入路径限制**
+   - Slint 使用 `import { ... } from "file.slint"` 语法导入组件
+   - 相对路径导入（如 `import { PlanData } from "../structs.slint"`）在某些情况下无法正确解析
+   - `std-widgets.slint` 中的组件（如 `TouchArea`、`GridLayout`、`Timer`）不是通过 `import` 导入的，而是内置组件
+
+3. **main.rs 类型引用依赖**
+   - `main.rs` 中大量使用 `app.global::<ui::PlanPageAdapter>()` 这样的类型引用
+   - 这些类型必须在 Slint 编译时被正确生成到 `ui` 模块中
+   - 拆分后，类型路径发生变化，导致 Rust 编译错误
+
+### 结论
+
+由于 Slint 的模块系统限制，`app.slint` 必须保持单文件结构。虽然文件较长（约2379行），但功能模块边界清晰，维护难度可接受。
+
+### 参考
+- Slint 官方文档：https://slint.dev/docs
+- 尝试拆分的提交：`960a04c`、`3a2a740`
+- 回退提交：`ebfe4c6`
+
 ## Git提交规范
 
 提交信息格式：`<type>: <description>`
