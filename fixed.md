@@ -1297,3 +1297,232 @@ app.global::<ui::PricingPageAdapter>().on_next_image(move || {
 30. 回调参数需要包含足够的上下文信息
 31. 子分类图片路径可能与普通分类不同
 32. 状态同步需要考虑所有可能的操作路径
+
+---
+
+## 40. 导入Excel按钮无效果
+
+**问题描述**: 点击"导入Excel"按钮没有反应。
+
+**原因**: 没有定义 `ExcelPageAdapter` 全局单例，也没有实现导入Excel的回调。
+
+**解决方案**: 
+1. 在 `app.slint` 中添加 `ExcelPageAdapter` 全局单例定义
+2. 在 `main.rs` 中实现 `on_import_excel` 回调（打开文件对话框）
+3. 在 `main.rs` 中实现 `on_export_result` 回调（导出匹配结果）
+4. 更新 `ExcelPage` 组件绑定回调
+
+```slint
+// Excel配对页面适配器（全局单例）
+export global ExcelPageAdapter {
+    in-out property <int> plan-id: 0;
+    in-out property <string> plan-name: "";
+    in-out property <[ExcelRowData]> excel-rows: [];
+    in-out property <int> selected-row: -1;
+    in-out property <string> status-message: "";
+    
+    callback import-excel();
+    callback export-result();
+    callback select-row(int);
+}
+```
+
+**关键点**:
+1. Slint组件需要全局单例来实现Rust和UI之间的数据通信
+2. 回调需要在main.rs中注册实现
+3. 使用rfd库实现文件对话框
+
+---
+
+## 41. Excel数据和配对区域不显示任何单元格
+
+**问题描述**: ExcelPage只显示占位文本，没有DataGridView组件。
+
+**原因**: ExcelPage只显示占位文本，没有实现DataGridView表格显示。
+
+**解决方案**: 
+1. 添加 `ExcelRowData` 结构体定义
+2. 更新 `ExcelPageAdapter` 使用结构化数据
+3. 实现完整的DataGridView表格显示
+4. 实现导入数据转换逻辑
+
+```slint
+// Excel行数据结构
+export struct ExcelRowData {
+    index: int,
+    sample-id: string,
+    hole-result: string,
+    test-time: string,
+    matched-image: string,
+    category: string,
+}
+```
+
+**关键点**:
+1. 使用结构化数据而不是JSON字符串
+2. 表头和数据行需要分别实现
+3. 需要ScrollView包裹数据行支持滚动
+
+---
+
+## 42. 孔位结果没有导入
+
+**问题描述**: 导入Excel后，孔位结果列显示为空。
+
+**原因**: Excel中的孔位结果是分散在多个列中的（孔位1、孔位2、...、孔位8），需要合并为逗号分隔的字符串。
+
+**解决方案**: 
+1. 自动查找所有包含"孔位1"-"孔位8"的列
+2. 按孔位编号排序
+3. 将多个孔位列的数据合并为逗号分隔的字符串
+
+```rust
+// 查找孔位列
+let mut hole_columns: Vec<(usize, i32)> = Vec::new();  // (列索引, 孔位编号)
+
+for (j, header) in headers.iter().enumerate() {
+    let header_lower = header.to_lowercase();
+    
+    for hole_num in 1..=8 {
+        let patterns = vec![
+            format!("孔位{}", hole_num),
+            format!("孔位_{}", hole_num),
+            format!("hole{}", hole_num),
+            format!("hole_{}", hole_num),
+        ];
+        
+        for pattern in &patterns {
+            if header_lower.contains(pattern) {
+                hole_columns.push((j, hole_num));
+                break;
+            }
+        }
+    }
+}
+
+// 按孔位编号排序
+hole_columns.sort_by_key(|&(_, num)| num);
+
+// 合并孔位结果
+if !hole_result_parts.is_empty() {
+    hole_result_parts.sort_by_key(|&(num, _)| num);
+    let hole_result: Vec<String> = hole_result_parts.iter().map(|(_, v)| v.clone()).collect();
+    let hole_result_str = hole_result.join(",");
+    data.insert("孔位结果".to_string(), hole_result_str);
+}
+```
+
+**关键点**:
+1. 孔位列可能分散在不同位置
+2. 需要按孔位编号排序后再合并
+3. 支持8孔（血型）、3孔（抗筛）、2孔（交叉配血）
+
+---
+
+## 43. 考察组对照组数据识别错误
+
+**问题描述**: Excel表格中有考察组和对照组两组数据，需要正确区分。
+
+**原因**: 表格中有两个样本编号列，第一个是考察组，第二个是对照组。
+
+**解决方案**: 
+1. 查找所有样本编号列
+2. 第一个找到的是考察组样本编号
+3. 第二个找到的是对照组样本编号
+4. 从考察组样本编号开始查找孔位列
+5. 对照组最后一个孔位的后一列是考察时间
+
+```rust
+// 查找所有样本编号列
+let mut sample_id_cols: Vec<usize> = Vec::new();
+for (j, header) in headers.iter().enumerate() {
+    let header_lower = header.to_lowercase();
+    if header_lower.contains("sampleid") || 
+       header_lower.contains("sample_id") ||
+       header_lower.contains("样本编号") ||
+       header_lower.contains("samplebarcode") ||
+       header_lower.contains("样本id") {
+        sample_id_cols.push(j);
+    }
+}
+
+// 考察组样本编号是第一个找到的
+let exam_sample_col = sample_id_cols[0];
+
+// 对照组样本编号是第二个找到的
+let control_sample_col = sample_id_cols[1];
+```
+
+**关键点**:
+1. 样本编号列可能有多个
+2. 考察组孔位列在考察组和对照组样本编号之间
+3. 考察时间列在对照组最后一个孔位的后一列
+
+---
+
+## 44. Excel日期时间格式不显示
+
+**问题描述**: 考察时间列显示为空，但Excel中确实有日期时间数据。
+
+**原因**: calamine库将Excel的日期时间解析为 `Data::DateTime` 类型，而不是 `Data::String`。Excel的日期时间格式是从1900年1月1日开始的天数（如46055.69777777778）。
+
+**解决方案**: 
+1. 处理calamine库的DateTime类型
+2. 使用 `as_f64()` 方法获取数值
+3. 使用chrono库将Excel序列号转换为yyyy-mm-dd hh:mm:ss格式
+
+```rust
+CellData::DateTime(dt) => {
+    // Excel日期时间格式转换为字符串
+    let value = dt.as_f64();
+    let excel_epoch = chrono::NaiveDate::from_ymd_opt(1899, 12, 30).unwrap();
+    let days = value as i64;
+    let fractional = value - days as f64;
+    let seconds = (fractional * 86400.0) as u32;
+    
+    if let Some(date) = excel_epoch.checked_add_days(chrono::Days::new(days as u64)) {
+        let time = chrono::NaiveTime::from_num_seconds_from_midnight_opt(seconds, 0).unwrap_or_default();
+        let datetime = date.and_time(time);
+        datetime.format("%Y-%m-%d %H:%M:%S").to_string()
+    } else {
+        format!("InvalidDate({})", value)
+    }
+},
+```
+
+**关键点**:
+1. Excel的日期时间是序列号格式，不是字符串
+2. 需要使用chrono库进行日期计算
+3. Excel的日期基准是1899年12月30日（不是1900年1月1日）
+4. 小数部分表示时间（0.5 = 12:00:00）
+
+---
+
+## 总结（更新）
+
+| 问题类型 | 数量 | 主要原因 |
+|---------|------|---------|
+| Slint语法/API | 4 | 不熟悉Slint特有语法 |
+| Rust类型系统 | 4 | 库版本差异、trait导入、借用移动 |
+| 测试逻辑 | 2 | 状态管理理解错误、断言过时 |
+| 依赖配置 | 2 | dev-dependencies、edition |
+| 上游问题 | 1 | Slint/ICU4X已知bug |
+| Slint布局/模型 | 5 | Flickable宽度传播、GridLayout空模型崩溃、ListView动态高度、ScrollView缺失、高度计算不一致 |
+| UI样式/主题 | 2 | native主题输入框显示问题、窗口宽度累加 |
+| 数据一致性 | 2 | 图片状态多源冲突、DB路径不一致 |
+| 渲染性能 | 1 | 700+项for循环导致黑屏 |
+| 回调/线程 | 2 | thread::spawn不可靠、回调未刷新数据 |
+| 路径处理 | 2 | 混用斜杠、import路径错误 |
+| 回调逻辑 | 1 | 未调用plan_manager.create_plan |
+| 结构体设计 | 1 | 未实现Clone、字段未公开 |
+| 子分类功能 | 4 | 嵌套结构设计、高亮状态同步、回调参数缺失、路径构建错误 |
+| Excel导入导出 | 5 | 回调未实现、数据结构缺失、孔位合并逻辑、日期格式转换、考察组对照组分离 |
+
+**关键经验（新增）**:
+33. Excel日期时间是序列号格式，需要使用chrono库转换
+34. calamine库的DateTime类型需要使用as_f64()方法获取值
+35. Excel的日期基准是1899年12月30日
+36. 孔位列可能分散在不同位置，需要按编号排序后合并
+37. 考察组和对照组数据需要通过样本编号列位置区分
+38. DataGridView需要使用结构化数据而不是JSON字符串
+39. Slint的全局单例用于Rust和UI之间的数据通信
