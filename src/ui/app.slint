@@ -1854,8 +1854,8 @@ export component ExcelPage inherits Rectangle {
 
                         Text { text: "序号"; width: 50px; color: white; font-weight: 600; vertical-alignment: center; font-size: 13px; }
                         Text { text: "样本编号"; width: 100px; color: white; font-weight: 600; vertical-alignment: center; font-size: 13px; }
-                        Text { text: "孔位结果"; width: 250px; color: white; font-weight: 600; vertical-alignment: center; font-size: 13px; }
-                        Text { text: "考察时间"; width: 160px; color: white; font-weight: 600; vertical-alignment: center; font-size: 13px; }
+                        Text { text: "孔位结果"; width: 130px; color: white; font-weight: 600; vertical-alignment: center; font-size: 13px; }
+                        Text { text: "考察时间"; width: 130px; color: white; font-weight: 600; vertical-alignment: center; horizontal-alignment: center; font-size: 13px; }
                         Text { text: "种类"; width: 80px; color: white; font-weight: 600; vertical-alignment: center; font-size: 13px; }
                         Text { text: "匹配图片"; width: 150px; color: white; font-weight: 600; vertical-alignment: center; font-size: 13px; }
                         Text { text: "操作"; width: 100px; color: white; font-weight: 600; vertical-alignment: center; font-size: 13px; }
@@ -1907,7 +1907,7 @@ export component ExcelPage inherits Rectangle {
                                 // 孔位结果
                                 Text {
                                     text: row.hole-result;
-                                    width: 250px;
+                                    width: 130px;
                                     vertical-alignment: center;
                                     font-size: 12px;
                                     overflow: elide;
@@ -1916,7 +1916,7 @@ export component ExcelPage inherits Rectangle {
                                 // 考察时间
                                 Text {
                                     text: row.test-time;
-                                    width: 160px;
+                                    width: 130px;
                                     vertical-alignment: center;
                                     font-size: 13px;
                                 }
