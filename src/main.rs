@@ -1179,6 +1179,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 return;
             }
             
+            // 检查当前活动的card是否已有数据
+            let active_card = app.global::<ui::ExcelPageAdapter>().get_active_card();
+            let has_data = match active_card {
+                0 => app.global::<ui::ExcelPageAdapter>().get_excel_rows_abo().iter().count() > 0,
+                1 => app.global::<ui::ExcelPageAdapter>().get_excel_rows_as().iter().count() > 0,
+                2 => app.global::<ui::ExcelPageAdapter>().get_excel_rows_cm().iter().count() > 0,
+                _ => false,
+            };
+            
+            // 如果已有数据，提示用户确认
+            if has_data {
+                let card_name = match active_card {
+                    0 => "血型",
+                    1 => "抗筛",
+                    2 => "交叉配血",
+                    _ => "未知",
+                };
+                let confirm = rfd::MessageDialog::new()
+                    .set_title("确认导入")
+                    .set_description(format!("{}类型已有数据，确认导入吗？", card_name))
+                    .set_level(rfd::MessageLevel::Warning)
+                    .set_buttons(rfd::MessageButtons::OkCancel)
+                    .show();
+                
+                if confirm != rfd::MessageDialogResult::Ok {
+                    return;
+                }
+            }
+            
             // 打开文件对话框
             let file_dialog = rfd::FileDialog::new()
                 .add_filter("Excel文件", &["xlsx", "xls"])
@@ -1213,17 +1242,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .unwrap_or("")
                                 .to_string();
                             
-                            // 根据样本编号推断种类
-                            let category = if excel_data.sample_id.starts_with("1K") || excel_data.sample_id.starts_with("1KY") {
-                                "Abo".to_string()
-                            } else if excel_data.sample_id.starts_with("2K") || excel_data.sample_id.starts_with("2KY") {
-                                "AS".to_string()
-                            } else if excel_data.sample_id.starts_with("3K") || excel_data.sample_id.starts_with("3KY") {
-                                "CM".to_string()
-                            } else {
-                                "Unknown".to_string()
-                            };
-                            
                             eprintln!("导入数据 {}: 样本={}, 孔位={}, 时间={}", i + 1, excel_data.sample_id, hole_result, test_time);
                             
                             excel_rows.push(ui::ExcelRowData {
@@ -1232,12 +1250,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 hole_result: hole_result.into(),
                                 test_time: test_time.into(),
                                 matched_image: "".into(),
-                                category: category.into(),
+                                category: "".into(),
                             });
                         }
                         
-                        // 更新UI
-                        app.global::<ui::ExcelPageAdapter>().set_excel_rows(excel_rows.as_slice().into());
+                        // 根据active_card更新对应的数据列表
+                        match active_card {
+                            0 => {
+                                app.global::<ui::ExcelPageAdapter>().set_excel_rows_abo(excel_rows.as_slice().into());
+                                app.global::<ui::ExcelPageAdapter>().set_current_excel_rows(excel_rows.as_slice().into());
+                            }
+                            1 => {
+                                app.global::<ui::ExcelPageAdapter>().set_excel_rows_as(excel_rows.as_slice().into());
+                                app.global::<ui::ExcelPageAdapter>().set_current_excel_rows(excel_rows.as_slice().into());
+                            }
+                            2 => {
+                                app.global::<ui::ExcelPageAdapter>().set_excel_rows_cm(excel_rows.as_slice().into());
+                                app.global::<ui::ExcelPageAdapter>().set_current_excel_rows(excel_rows.as_slice().into());
+                            }
+                            _ => {}
+                        }
+                        
                         app.global::<ui::ExcelPageAdapter>().set_status_message(
                             format!("成功导入 {} 条数据", count).into()
                         );

@@ -484,10 +484,17 @@ export struct ExcelRowData {
 
 // Excel配对页面适配器（全局单例）
 export global ExcelPageAdapter {
-    // Excel数据
-    in-out property <int> plan-id: 0;
-    in-out property <string> plan-name: "";
-    in-out property <[ExcelRowData]> excel-rows: [];
+    // 当前活动的card: 0=血型, 1=抗筛, 2=交叉配血
+    in-out property <int> active-card: 0;
+    
+    // 三个card的Excel数据
+    in-out property <[ExcelRowData]> excel-rows-abo: [];  // 血型
+    in-out property <[ExcelRowData]> excel-rows-as: [];   // 抗筛
+    in-out property <[ExcelRowData]> excel-rows-cm: [];   // 交叉配血
+    
+    // 当前显示的Excel数据（根据active-card切换）
+    in-out property <[ExcelRowData]> current-excel-rows: [];
+    
     in-out property <int> selected-row: -1;
     in-out property <string> status-message: "";
     
@@ -495,6 +502,20 @@ export global ExcelPageAdapter {
     callback import-excel();
     callback export-result();
     callback select-row(int);
+    callback switch-card(int);  // 切换card
+    
+    // 切换card时更新current-excel-rows
+    switch-card(index) => {
+        active-card = index;
+        if (index == 0) {
+            current-excel-rows = excel-rows-abo;
+        } else if (index == 1) {
+            current-excel-rows = excel-rows-as;
+        } else if (index == 2) {
+            current-excel-rows = excel-rows-cm;
+        }
+        selected-row = -1;
+    }
 }
 
 // 计划管理页面
@@ -1794,6 +1815,84 @@ export component ExcelPage inherits Rectangle {
             }
         }
 
+        // Card切换栏
+        HorizontalLayout {
+            height: 40px;
+            spacing: 4px;
+
+            // 血型card
+            Rectangle {
+                horizontal-stretch: 1;
+                background: ExcelPageAdapter.active-card == 0 ? #1976D2 : #f5f5f5;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: ExcelPageAdapter.active-card == 0 ? #1976D2 : #e0e0e0;
+
+                Text {
+                    text: "血型";
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: ExcelPageAdapter.active-card == 0 ? white : #666;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                TouchArea {
+                    clicked => {
+                        ExcelPageAdapter.switch-card(0);
+                    }
+                }
+            }
+
+            // 抗筛card
+            Rectangle {
+                horizontal-stretch: 1;
+                background: ExcelPageAdapter.active-card == 1 ? #1976D2 : #f5f5f5;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: ExcelPageAdapter.active-card == 1 ? #1976D2 : #e0e0e0;
+
+                Text {
+                    text: "抗筛";
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: ExcelPageAdapter.active-card == 1 ? white : #666;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                TouchArea {
+                    clicked => {
+                        ExcelPageAdapter.switch-card(1);
+                    }
+                }
+            }
+
+            // 交叉配血card
+            Rectangle {
+                horizontal-stretch: 1;
+                background: ExcelPageAdapter.active-card == 2 ? #1976D2 : #f5f5f5;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: ExcelPageAdapter.active-card == 2 ? #1976D2 : #e0e0e0;
+
+                Text {
+                    text: "交叉配血";
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: ExcelPageAdapter.active-card == 2 ? white : #666;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                TouchArea {
+                    clicked => {
+                        ExcelPageAdapter.switch-card(2);
+                    }
+                }
+            }
+        }
+
         // 状态消息
         if ExcelPageAdapter.status-message != "": Rectangle {
             height: 30px;
@@ -1818,7 +1917,7 @@ export component ExcelPage inherits Rectangle {
             border-radius: 4px;
             clip: true;
 
-            if ExcelPageAdapter.excel-rows.length == 0: VerticalLayout {
+            if ExcelPageAdapter.current-excel-rows.length == 0: VerticalLayout {
                 alignment: center;
                 spacing: 8px;
 
@@ -1837,7 +1936,7 @@ export component ExcelPage inherits Rectangle {
                 }
             }
 
-            if ExcelPageAdapter.excel-rows.length > 0: VerticalLayout {
+            if ExcelPageAdapter.current-excel-rows.length > 0: VerticalLayout {
                 padding: 0;
                 spacing: 0;
 
@@ -1868,7 +1967,7 @@ export component ExcelPage inherits Rectangle {
                     VerticalLayout {
                         spacing: 1px;
 
-                        for row[i] in ExcelPageAdapter.excel-rows: Rectangle {
+                        for row[i] in ExcelPageAdapter.current-excel-rows: Rectangle {
                             height: 34px;
                             background: i == ExcelPageAdapter.selected-row ? #e3f2fd : (mod(i, 2) == 0 ? white : #fafafa);
                             border-width: 1px;
@@ -1996,7 +2095,7 @@ export component ExcelPage inherits Rectangle {
                 padding-right: 8px;
 
                 Text {
-                    text: "共 " + ExcelPageAdapter.excel-rows.length + " 条数据";
+                    text: "共 " + ExcelPageAdapter.current-excel-rows.length + " 条数据";
                     font-size: 11px;
                     color: #666;
                     vertical-alignment: center;
@@ -2005,7 +2104,7 @@ export component ExcelPage inherits Rectangle {
                 Rectangle { horizontal-stretch: 1; }
 
                 if ExcelPageAdapter.selected-row >= 0: Text {
-                    text: "已选择: " + ExcelPageAdapter.excel-rows[ExcelPageAdapter.selected-row].sample-id;
+                    text: "已选择: " + ExcelPageAdapter.current-excel-rows[ExcelPageAdapter.selected-row].sample-id;
                     font-size: 11px;
                     color: #1976D2;
                     vertical-alignment: center;
