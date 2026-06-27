@@ -1856,8 +1856,7 @@ export component ExcelPage inherits Rectangle {
                         Text { text: "样本编号"; width: 100px; color: white; font-weight: 600; vertical-alignment: center; font-size: 13px; }
                         Text { text: "孔位结果"; width: 130px; color: white; font-weight: 600; vertical-alignment: center; font-size: 13px; }
                         Text { text: "考察时间"; width: 130px; color: white; font-weight: 600; vertical-alignment: center; horizontal-alignment: center; font-size: 13px; }
-                        Text { text: "种类"; width: 80px; color: white; font-weight: 600; vertical-alignment: center; font-size: 13px; }
-                        Text { text: "匹配图片"; width: 150px; color: white; font-weight: 600; vertical-alignment: center; font-size: 13px; }
+                        Text { text: "原始图片"; width: 150px; color: white; font-weight: 600; vertical-alignment: center; font-size: 13px; }
                         Text { text: "操作"; width: 100px; color: white; font-weight: 600; vertical-alignment: center; font-size: 13px; }
                     }
                 }
@@ -1921,23 +1920,7 @@ export component ExcelPage inherits Rectangle {
                                     font-size: 13px;
                                 }
 
-                                // 种类
-                                Rectangle {
-                                    width: 80px;
-                                    height: 24px;
-                                    background: row.category == "Abo" ? #e3f2fd : (row.category == "AS" ? #fff3e0 : (row.category == "CM" ? #e8f5e9 : #f5f5f5));
-                                    border-radius: 3px;
-
-                                    Text {
-                                        text: row.category == "Abo" ? "血型" : (row.category == "AS" ? "抗筛" : (row.category == "CM" ? "交叉配血" : "未知"));
-                                        font-size: 12px;
-                                        color: row.category == "Abo" ? #1976D2 : (row.category == "AS" ? #e65100 : (row.category == "CM" ? #2e7d32 : #999));
-                                        horizontal-alignment: center;
-                                        vertical-alignment: center;
-                                    }
-                                }
-
-                                // 匹配图片
+                                // 原始图片
                                 Text {
                                     text: row.matched-image != "" ? row.matched-image : "未匹配";
                                     width: 150px;
