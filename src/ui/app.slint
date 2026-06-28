@@ -2217,6 +2217,8 @@ export component ImagePreviewWindow inherits Window {
             border-radius: 4px;
 
             HorizontalLayout {
+                vertical-stretch: 1;
+                
                 // 上一张按钮（仅在有多张图片时显示）
                 if total-count > 1: Rectangle {
                     width: 40px;
@@ -2243,6 +2245,7 @@ export component ImagePreviewWindow inherits Window {
                 // 图片显示
                 Rectangle {
                     horizontal-stretch: 1;
+                    vertical-stretch: 1;
 
                     Image {
                         source: preview-image;

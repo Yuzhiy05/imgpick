@@ -447,22 +447,30 @@ fn update_pricing_progress(app: &ui::App, categories: &[ui::ImageCategoryData]) 
 /// 扫描final文件夹，返回文件名到路径的映射
 fn scan_final_folder(final_dir: &Path) -> std::collections::HashMap<String, std::path::PathBuf> {
     let mut result = std::collections::HashMap::new();
+    eprintln!("扫描final目录: {:?}", final_dir);
+    
     if !final_dir.exists() {
+        eprintln!("final目录不存在");
         return result;
     }
     
     if let Ok(entries) = std::fs::read_dir(final_dir) {
         for entry in entries.flatten() {
             if let Some(name) = entry.file_name().to_str() {
+                eprintln!("检查文件: {}", name);
                 // 只处理图片文件
                 if name.ends_with(".jpg") || name.ends_with(".jpeg") || 
                    name.ends_with(".png") || name.ends_with(".bmp") {
+                    eprintln!("添加图片: {}", name);
                     result.insert(name.to_string(), entry.path());
                 }
             }
         }
+    } else {
+        eprintln!("无法读取final目录");
     }
     
+    eprintln!("扫描完成，找到 {} 张图片", result.len());
     result
 }
 
@@ -470,8 +478,8 @@ fn scan_final_folder(final_dir: &Path) -> std::collections::HashMap<String, std:
 /// 文件名格式：2026-04-09-12-25-49.jpg
 /// 返回：2026-04-09 12:25:49
 fn parse_time_from_filename(filename: &str) -> Option<String> {
-    // 移除扩展名
-    let name = filename.rsplit('.').next().unwrap_or(filename);
+    // 移除扩展名（使用 split 而不是 rsplit）
+    let name = filename.split('.').next().unwrap_or(filename);
     
     // 分割日期和时间部分
     let parts: Vec<&str> = name.split('-').collect();
@@ -1320,6 +1328,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let mut time_to_file: std::collections::HashMap<String, String> = std::collections::HashMap::new();
                             for (filename, _) in &final_images {
                                 if let Some(time_str) = parse_time_from_filename(filename) {
+                                    eprintln!("解析文件名: {} -> {}", filename, time_str);
                                     time_to_file.insert(time_str, filename.clone());
                                 }
                             }
@@ -1328,9 +1337,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let mut matched_count = 0;
                             for row in excel_rows.iter_mut() {
                                 let test_time = row.test_time.to_string();
+                                eprintln!("查找匹配: test_time='{}'", test_time);
                                 if let Some(matched_filename) = time_to_file.get(&test_time) {
                                     row.matched_image = matched_filename.clone().into();
                                     matched_count += 1;
+                                    eprintln!("匹配成功: {} -> {}", test_time, matched_filename);
                                 }
                             }
                             
@@ -1851,5 +1862,32 @@ mod tests {
         // Test get all plans
         let plans = manager.get_all_plans().unwrap();
         assert_eq!(plans.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_time_from_filename() {
+        // 测试正常文件名
+        assert_eq!(
+            parse_time_from_filename("2026-02-02-16-44-48.jpg"),
+            Some("2026-02-02 16:44:48".to_string())
+        );
+        
+        // 测试其他格式
+        assert_eq!(
+            parse_time_from_filename("2026-04-09-12-25-49-679.jpg"),
+            Some("2026-04-09 12:25:49".to_string())
+        );
+        
+        // 测试无扩展名
+        assert_eq!(
+            parse_time_from_filename("2026-02-02-16-44-48"),
+            Some("2026-02-02 16:44:48".to_string())
+        );
+        
+        // 测试无效文件名
+        assert_eq!(
+            parse_time_from_filename("test.jpg"),
+            None
+        );
     }
 }
