@@ -1658,6 +1658,67 @@ Text { text: row.test-time; width: 130px; ... }
 
 ---
 
+## 52. 文件名解析错误导致匹配状态恢复失败
+
+**问题描述**: 重新导入Excel后，final文件夹中已有的图片无法恢复匹配状态。
+
+**原因**: `parse_time_from_filename` 函数使用 `rsplit('.').next()` 获取文件名，但 `rsplit` 返回的是从右往左的迭代器，`next()` 取到的是扩展名 `"jpg"` 而不是文件名主体。
+
+**调试输出**:
+```
+解析文件名: filename='2026-02-02-16-44-48.jpg', name='jpg'
+分割结果: parts=["jpg"], len=1
+解析失败: parts.len() < 6
+```
+
+**解决方案**: 使用 `split('.').next()` 代替 `rsplit('.').next()`。
+
+```rust
+// 错误
+let name = filename.rsplit('.').next().unwrap_or(filename);
+
+// 正确
+let name = filename.split('.').next().unwrap_or(filename);
+```
+
+**关键点**:
+1. `split('.')` 返回从左往右的迭代器，`next()` 取到的是文件名主体
+2. `rsplit('.')` 返回从右往左的迭代器，`next()` 取到的是扩展名
+3. 移除扩展名应该用 `split` 而不是 `rsplit`
+
+---
+
+## 53. 图片预览窗口图片显示很小
+
+**问题描述**: 抗筛和交叉配血的预览图片显示很小，血型图片正常。
+
+**原因**: 图片显示区域的 `Rectangle` 和 `HorizontalLayout` 没有设置 `vertical-stretch: 1`，导致图片被压缩在很窄的矩形里。
+
+**解决方案**: 在图片显示的 `Rectangle` 和父容器 `HorizontalLayout` 上添加 `vertical-stretch: 1`。
+
+```slint
+HorizontalLayout {
+    vertical-stretch: 1;  // 添加这行
+    
+    // 图片显示
+    Rectangle {
+        horizontal-stretch: 1;
+        vertical-stretch: 1;  // 添加这行
+        
+        Image {
+            source: preview-image;
+            image-fit: contain;
+            width: 100%;
+            height: 100%;
+        }
+    }
+}
+```
+
+**状态**: 待验证
+
+---
+
 ## 总结（更新）
 
 | 问题类型 | 数量 | 主要原因 |
@@ -1677,11 +1738,9 @@ Text { text: row.test-time; width: 130px; ... }
 | 结构体设计 | 1 | 未实现Clone、字段未公开 |
 | 子分类功能 | 4 | 嵌套结构设计、高亮状态同步、回调参数缺失、路径构建错误 |
 | Excel导入导出 | 5 | 回调未实现、数据结构缺失、孔位合并逻辑、日期格式转换、考察组对照组分离 |
-| Excel配对功能 | 7 | 状态消息残留、高亮同步、预览窗口显示、关闭按钮无效、列宽对齐 |
+| Excel配对功能 | 9 | 状态消息残留、高亮同步、预览窗口显示、关闭按钮无效、列宽对齐、文件名解析、图片显示 |
 
 **关键经验（新增）**:
-40. 切换Card时需要清除状态消息
-41. 子分类需要独立的选中状态跟踪
-42. 预览窗口需要独立属性，不依赖全局单例
-43. 窗口关闭需要调用window().hide()
-44. 删除文件和数据库记录都不会报异常，可以不检查
+45. `split` 和 `rsplit` 返回的迭代器方向不同，移除扩展名应该用 `split`
+46. Slint的 `vertical-stretch` 需要在父容器和子组件上都设置才能生效
+47. GUI应用的测试需要添加单元测试来验证核心逻辑
