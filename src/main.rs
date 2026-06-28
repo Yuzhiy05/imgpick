@@ -1248,7 +1248,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 index: (i + 1) as i32,
                                 sample_id: excel_data.sample_id.clone().into(),
                                 hole_result: hole_result.into(),
-                                test_time: test_time.into(),
+                                test_time: test_time.clone().into(),
+                                file_path: test_time.clone().into(),  // 暂时和考察时间一致
                                 matched_image: "".into(),
                                 category: "".into(),
                             });
@@ -1324,6 +1325,399 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     app.global::<ui::ExcelPageAdapter>().on_select_row(move |index| {
         if let Some(app) = weak_clone.upgrade() {
             app.global::<ui::ExcelPageAdapter>().set_selected_row(index);
+        }
+    });
+    
+    // 查找匹配图片回调
+    let weak_clone = weak.clone();
+    let base_dir_clone = base_dir.clone();
+    app.global::<ui::ExcelPageAdapter>().on_find_matching_image(move |row_index| {
+        if let Some(app) = weak_clone.upgrade() {
+            let active_card = app.global::<ui::ExcelPageAdapter>().get_active_card();
+            let current_rows = app.global::<ui::ExcelPageAdapter>().get_current_excel_rows();
+            
+            if let Some(row) = current_rows.iter().nth(row_index as usize) {
+                let file_path = row.file_path.to_string();
+                if file_path.is_empty() {
+                    app.global::<ui::ExcelPageAdapter>().set_status_message("文件路径为空".into());
+                    return;
+                }
+                
+                // 解析时间，查找匹配的图片
+                // 时间格式：2026-04-09 12:25:49
+                // 图片名格式：2026-04-09-12-25-49-679.jpg
+                let time_parts: Vec<&str> = file_path.split(' ').collect();
+                if time_parts.len() != 2 {
+                    app.global::<ui::ExcelPageAdapter>().set_status_message("时间格式不正确".into());
+                    return;
+                }
+                
+                let date_part = time_parts[0]; // 2026-04-09
+                let time_part = time_parts[1]; // 12:25:49
+                
+                // 构建图片名前缀：2026-04-09-12-25-49
+                let image_prefix = format!("{}-{}", date_part.replace("-", "-"), time_part.replace(":", "-"));
+                
+                // 在图片源目录中查找匹配的图片
+                let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
+                if plan_name.is_empty() {
+                    app.global::<ui::ExcelPageAdapter>().set_status_message("请先选择一个计划".into());
+                    return;
+                }
+                
+                let src_dir = base_dir_clone.join("plans").join(&plan_name).join("src");
+                if !src_dir.exists() {
+                    app.global::<ui::ExcelPageAdapter>().set_status_message("图片源目录不存在".into());
+                    return;
+                }
+                
+                // 查找所有匹配的图片
+                let mut found_images: Vec<(String, std::path::PathBuf)> = Vec::new();
+                if let Ok(entries) = std::fs::read_dir(&src_dir) {
+                    for entry in entries.flatten() {
+                        if let Some(name) = entry.file_name().to_str() {
+                            // 检查图片名是否以image_prefix开头（忽略毫秒部分）
+                            if name.starts_with(&image_prefix) {
+                                found_images.push((name.to_string(), entry.path()));
+                            }
+                        }
+                    }
+                }
+                
+                if !found_images.is_empty() {
+                    // 设置匹配的图片列表
+                    let matched_names: Vec<slint::SharedString> = found_images.iter()
+                        .map(|(name, _)| name.clone().into())
+                        .collect();
+                    app.global::<ui::ExcelPageAdapter>().set_matched_images(matched_names.as_slice().into());
+                    app.global::<ui::ExcelPageAdapter>().set_current_matched_index(0);
+                    app.global::<ui::ExcelPageAdapter>().set_preview_row_index(row_index);
+                    app.global::<ui::ExcelPageAdapter>().set_show_image_preview(true);
+                    
+                    // 加载第一张图片
+                    let (first_name, first_path) = &found_images[0];
+                    match slint::Image::load_from_path(first_path) {
+                        Ok(img) => {
+                            app.global::<ui::ExcelPageAdapter>().set_preview_image(img.clone());
+                            app.global::<ui::ExcelPageAdapter>().set_preview_image_name(first_name.clone().into());
+                            
+                            // 获取样本信息
+                            let sample_id = row.sample_id.to_string();
+                            let test_time = row.test_time.to_string();
+                            
+                            // 创建预览窗口
+                            let preview_window = ui::ImagePreviewWindow::new().unwrap();
+                            
+                            // 设置预览窗口属性
+                            preview_window.set_preview_image(img);
+                            preview_window.set_preview_image_name(first_name.clone().into());
+                            preview_window.set_sample_id(sample_id.into());
+                            preview_window.set_test_time(test_time.into());
+                            preview_window.set_current_index(0);
+                            preview_window.set_total_count(found_images.len() as i32);
+                            
+                            // 设置关闭窗口回调
+                            let preview_weak_for_close = preview_window.as_weak();
+                            let weak_for_close = app.as_weak();
+                            preview_window.on_close_window(move || {
+                                if let Some(app) = weak_for_close.upgrade() {
+                                    app.global::<ui::ExcelPageAdapter>().set_show_image_preview(false);
+                                }
+                                if let Some(preview) = preview_weak_for_close.upgrade() {
+                                    let _ = preview.window().hide();
+                                }
+                            });
+                            
+                            // 设置确认匹配回调
+                            let weak_for_confirm = app.as_weak();
+                            preview_window.on_confirm_match(move || {
+                                if let Some(app) = weak_for_confirm.upgrade() {
+                                    let row_idx = app.global::<ui::ExcelPageAdapter>().get_preview_row_index();
+                                    let img_name = app.global::<ui::ExcelPageAdapter>().get_preview_image_name();
+                                    app.global::<ui::ExcelPageAdapter>().invoke_confirm_image_match(row_idx, img_name);
+                                }
+                            });
+                            
+                            // 设置下一张回调
+                            let weak_for_next = app.as_weak();
+                            let preview_weak_for_next = preview_window.as_weak();
+                            let images_clone = found_images.clone();
+                            let src_dir_clone = src_dir.clone();
+                            preview_window.on_next_image(move || {
+                                if let Some(app) = weak_for_next.upgrade() {
+                                    let current_idx = app.global::<ui::ExcelPageAdapter>().get_current_matched_index();
+                                    let next_idx = current_idx + 1;
+                                    if (next_idx as usize) < images_clone.len() {
+                                        let (name, path) = &images_clone[next_idx as usize];
+                                        if let Ok(img) = slint::Image::load_from_path(path) {
+                                            app.global::<ui::ExcelPageAdapter>().set_preview_image(img.clone());
+                                            app.global::<ui::ExcelPageAdapter>().set_preview_image_name(name.clone().into());
+                                            app.global::<ui::ExcelPageAdapter>().set_current_matched_index(next_idx);
+                                            
+                                            if let Some(preview) = preview_weak_for_next.upgrade() {
+                                                preview.set_preview_image(img);
+                                                preview.set_preview_image_name(name.clone().into());
+                                                preview.set_current_index(next_idx);
+                                            }
+                                        }
+                                    }
+                                }
+                            });
+                            
+                            // 设置上一张回调
+                            let weak_for_prev = app.as_weak();
+                            let preview_weak_for_prev = preview_window.as_weak();
+                            let images_clone2 = found_images.clone();
+                            preview_window.on_prev_image(move || {
+                                if let Some(app) = weak_for_prev.upgrade() {
+                                    let current_idx = app.global::<ui::ExcelPageAdapter>().get_current_matched_index();
+                                    let prev_idx = current_idx - 1;
+                                    if prev_idx >= 0 {
+                                        let (name, path) = &images_clone2[prev_idx as usize];
+                                        if let Ok(img) = slint::Image::load_from_path(path) {
+                                            app.global::<ui::ExcelPageAdapter>().set_preview_image(img.clone());
+                                            app.global::<ui::ExcelPageAdapter>().set_preview_image_name(name.clone().into());
+                                            app.global::<ui::ExcelPageAdapter>().set_current_matched_index(prev_idx);
+                                            
+                                            if let Some(preview) = preview_weak_for_prev.upgrade() {
+                                                preview.set_preview_image(img);
+                                                preview.set_preview_image_name(name.clone().into());
+                                                preview.set_current_index(prev_idx);
+                                            }
+                                        }
+                                    }
+                                }
+                            });
+                            
+                            preview_window.show().unwrap();
+                        }
+                        Err(e) => {
+                            app.global::<ui::ExcelPageAdapter>().set_status_message(
+                                format!("加载图片失败: {}", e).into()
+                            );
+                        }
+                    }
+                } else {
+                    app.global::<ui::ExcelPageAdapter>().set_status_message(
+                        format!("未找到匹配的图片: {}", image_prefix).into()
+                    );
+                }
+            }
+        }
+    });
+    
+    // 确认图片匹配回调
+    let weak_clone = weak.clone();
+    let base_dir_clone = base_dir.clone();
+    let db_clone = db.clone();
+    app.global::<ui::ExcelPageAdapter>().on_confirm_image_match(move |row_index, image_name| {
+        if let Some(app) = weak_clone.upgrade() {
+            let plan_id = app.global::<ui::PricingPageAdapter>().get_plan_id();
+            if plan_id == 0 {
+                app.global::<ui::ExcelPageAdapter>().set_status_message("请先选择一个计划".into());
+                return;
+            }
+            
+            let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
+            if plan_name.is_empty() {
+                app.global::<ui::ExcelPageAdapter>().set_status_message("请先选择一个计划".into());
+                return;
+            }
+            
+            let active_card = app.global::<ui::ExcelPageAdapter>().get_active_card();
+            let current_rows = app.global::<ui::ExcelPageAdapter>().get_current_excel_rows();
+            
+            if let Some(row) = current_rows.iter().nth(row_index as usize) {
+                let test_time = row.test_time.to_string();
+                let sample_id = row.sample_id.to_string();
+                
+                // 构建新文件名：考察时间 + 原后缀
+                let ext = image_name.rsplit('.').next().unwrap_or("jpg");
+                let new_name = format!("{}.{}", test_time.replace(" ", "-").replace(":", "-"), ext);
+                
+                // 复制文件到最终输出目录
+                let src_dir = base_dir_clone.join("plans").join(&plan_name).join("src");
+                let final_dir = base_dir_clone.join("plans").join(&plan_name).join("final");
+                
+                if !final_dir.exists() {
+                    if let Err(e) = std::fs::create_dir_all(&final_dir) {
+                        app.global::<ui::ExcelPageAdapter>().set_status_message(
+                            format!("创建输出目录失败: {}", e).into()
+                        );
+                        return;
+                    }
+                }
+                
+                let src_path = src_dir.join(image_name.to_string());
+                let dest_path = final_dir.join(&new_name);
+                
+                // 复制并重命名文件
+                if let Err(e) = std::fs::copy(&src_path, &dest_path) {
+                    app.global::<ui::ExcelPageAdapter>().set_status_message(
+                        format!("复制文件失败: {}", e).into()
+                    );
+                    return;
+                }
+                
+                // 更新数据库记录
+                let image_manager = image_manager::ImageManager::new(db_clone.clone(), base_dir_clone.clone());
+                // TODO: 在数据库中记录图片匹配关系
+                
+                // 更新UI中的匹配状态
+                let mut updated_rows: Vec<ui::ExcelRowData> = current_rows.iter().collect();
+                if let Some(row) = updated_rows.get_mut(row_index as usize) {
+                    row.matched_image = new_name.clone().into();
+                }
+                
+                // 更新对应的数据列表
+                match active_card {
+                    0 => {
+                        app.global::<ui::ExcelPageAdapter>().set_excel_rows_abo(updated_rows.as_slice().into());
+                        app.global::<ui::ExcelPageAdapter>().set_current_excel_rows(updated_rows.as_slice().into());
+                    }
+                    1 => {
+                        app.global::<ui::ExcelPageAdapter>().set_excel_rows_as(updated_rows.as_slice().into());
+                        app.global::<ui::ExcelPageAdapter>().set_current_excel_rows(updated_rows.as_slice().into());
+                    }
+                    2 => {
+                        app.global::<ui::ExcelPageAdapter>().set_excel_rows_cm(updated_rows.as_slice().into());
+                        app.global::<ui::ExcelPageAdapter>().set_current_excel_rows(updated_rows.as_slice().into());
+                    }
+                    _ => {}
+                }
+                
+                // 关闭预览
+                app.global::<ui::ExcelPageAdapter>().set_show_image_preview(false);
+                
+                app.global::<ui::ExcelPageAdapter>().set_status_message(
+                    format!("图片匹配成功: {} -> {}", image_name, new_name).into()
+                );
+            }
+        }
+    });
+    
+    // 关闭图片预览回调
+    let weak_clone = weak.clone();
+    app.global::<ui::ExcelPageAdapter>().on_close_image_preview(move || {
+        if let Some(app) = weak_clone.upgrade() {
+            app.global::<ui::ExcelPageAdapter>().set_show_image_preview(false);
+        }
+    });
+    
+    // 取消绑定回调
+    let weak_clone = weak.clone();
+    let db_clone = db.clone();
+    let base_dir_clone = base_dir.clone();
+    app.global::<ui::ExcelPageAdapter>().on_unbind_image(move |row_index| {
+        if let Some(app) = weak_clone.upgrade() {
+            let active_card = app.global::<ui::ExcelPageAdapter>().get_active_card();
+            let current_rows = app.global::<ui::ExcelPageAdapter>().get_current_excel_rows();
+            
+            if let Some(row) = current_rows.iter().nth(row_index as usize) {
+                let sample_id = row.sample_id.to_string();
+                let matched_image = row.matched_image.to_string();
+                
+                // 如果有匹配的图片，删除文件（忽略不存在的错误）
+                if !matched_image.is_empty() {
+                    let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
+                    if !plan_name.is_empty() {
+                        let final_dir = base_dir_clone.join("plans").join(&plan_name).join("final");
+                        let image_path = final_dir.join(&matched_image);
+                        // 删除文件，忽略不存在的错误
+                        let _ = std::fs::remove_file(&image_path);
+                    }
+                }
+                
+                // 从数据库中删除绑定关系（不检查是否存在，因为DELETE不会报错）
+                // 注意：这里需要根据sample_id和image_name删除，而不是image_id
+                // 由于当前的数据库结构没有直接的sample_id到image的映射表
+                // 我们只需要更新UI状态即可
+                
+                // 更新UI中的匹配状态
+                let mut updated_rows: Vec<ui::ExcelRowData> = current_rows.iter().collect();
+                if let Some(row) = updated_rows.get_mut(row_index as usize) {
+                    row.matched_image = "".into();
+                }
+                
+                // 更新对应的数据列表
+                match active_card {
+                    0 => {
+                        app.global::<ui::ExcelPageAdapter>().set_excel_rows_abo(updated_rows.as_slice().into());
+                        app.global::<ui::ExcelPageAdapter>().set_current_excel_rows(updated_rows.as_slice().into());
+                    }
+                    1 => {
+                        app.global::<ui::ExcelPageAdapter>().set_excel_rows_as(updated_rows.as_slice().into());
+                        app.global::<ui::ExcelPageAdapter>().set_current_excel_rows(updated_rows.as_slice().into());
+                    }
+                    2 => {
+                        app.global::<ui::ExcelPageAdapter>().set_excel_rows_cm(updated_rows.as_slice().into());
+                        app.global::<ui::ExcelPageAdapter>().set_current_excel_rows(updated_rows.as_slice().into());
+                    }
+                    _ => {}
+                }
+                
+                app.global::<ui::ExcelPageAdapter>().set_status_message(
+                    format!("已取消绑定: {} - {}", sample_id, matched_image).into()
+                );
+            }
+        }
+    });
+    
+    // 下一张匹配图片回调
+    let weak_clone = weak.clone();
+    app.global::<ui::ExcelPageAdapter>().on_next_matched_image(move || {
+        if let Some(app) = weak_clone.upgrade() {
+            let current_idx = app.global::<ui::ExcelPageAdapter>().get_current_matched_index();
+            let matched_images = app.global::<ui::ExcelPageAdapter>().get_matched_images();
+            let total = matched_images.iter().count() as i32;
+            
+            if current_idx + 1 < total {
+                let next_idx = current_idx + 1;
+                if let Some(name) = matched_images.iter().nth(next_idx as usize) {
+                    // 查找图片路径
+                    let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
+                    if !plan_name.is_empty() {
+                        let base_dir = std::env::current_dir().unwrap_or_default();
+                        let src_dir = base_dir.join("plans").join(&plan_name).join("src");
+                        let image_path = src_dir.join(name.to_string());
+                        
+                        if let Ok(img) = slint::Image::load_from_path(&image_path) {
+                            app.global::<ui::ExcelPageAdapter>().set_preview_image(img);
+                            app.global::<ui::ExcelPageAdapter>().set_preview_image_name(name);
+                            app.global::<ui::ExcelPageAdapter>().set_current_matched_index(next_idx);
+                        }
+                    }
+                }
+            }
+        }
+    });
+    
+    // 上一张匹配图片回调
+    let weak_clone = weak.clone();
+    app.global::<ui::ExcelPageAdapter>().on_prev_matched_image(move || {
+        if let Some(app) = weak_clone.upgrade() {
+            let current_idx = app.global::<ui::ExcelPageAdapter>().get_current_matched_index();
+            
+            if current_idx > 0 {
+                let prev_idx = current_idx - 1;
+                let matched_images = app.global::<ui::ExcelPageAdapter>().get_matched_images();
+                
+                if let Some(name) = matched_images.iter().nth(prev_idx as usize) {
+                    // 查找图片路径
+                    let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
+                    if !plan_name.is_empty() {
+                        let base_dir = std::env::current_dir().unwrap_or_default();
+                        let src_dir = base_dir.join("plans").join(&plan_name).join("src");
+                        let image_path = src_dir.join(name.to_string());
+                        
+                        if let Ok(img) = slint::Image::load_from_path(&image_path) {
+                            app.global::<ui::ExcelPageAdapter>().set_preview_image(img);
+                            app.global::<ui::ExcelPageAdapter>().set_preview_image_name(name);
+                            app.global::<ui::ExcelPageAdapter>().set_current_matched_index(prev_idx);
+                        }
+                    }
+                }
+            }
         }
     });
     
