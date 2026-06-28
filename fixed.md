@@ -1719,6 +1719,26 @@ HorizontalLayout {
 
 ---
 
+## 54. ManagePage右键点击回调未绑定
+
+**问题描述**: 右键点击已标价图片时，手动匹配面板没有显示。
+
+**原因**: ManagePage组件中ImageCategoryItem没有绑定`image-right-clicked`和`subcategory-image-right-clicked`回调。
+
+**解决方案**: 在ManagePage组件中添加右键点击回调绑定。
+
+```slint
+image-right-clicked(cat_idx, img_idx, img_name) => {
+    ManagePageAdapter.show-context-menu-at(0, 0, i, img_idx, img_name);
+}
+
+subcategory-image-right-clicked(cat_idx, sub_idx, img_idx, img_name) => {
+    ManagePageAdapter.show-context-menu-at(0, 0, i, img_idx, img_name);
+}
+```
+
+---
+
 ## 总结（更新）
 
 | 问题类型 | 数量 | 主要原因 |
@@ -1738,9 +1758,9 @@ HorizontalLayout {
 | 结构体设计 | 1 | 未实现Clone、字段未公开 |
 | 子分类功能 | 4 | 嵌套结构设计、高亮状态同步、回调参数缺失、路径构建错误 |
 | Excel导入导出 | 5 | 回调未实现、数据结构缺失、孔位合并逻辑、日期格式转换、考察组对照组分离 |
-| Excel配对功能 | 9 | 状态消息残留、高亮同步、预览窗口显示、关闭按钮无效、列宽对齐、文件名解析、图片显示 |
+| Excel配对功能 | 10 | 状态消息残留、高亮同步、预览窗口显示、关闭按钮无效、列宽对齐、文件名解析、图片显示、右键回调未绑定 |
 
 **关键经验（新增）**:
-45. `split` 和 `rsplit` 返回的迭代器方向不同，移除扩展名应该用 `split`
-46. Slint的 `vertical-stretch` 需要在父容器和子组件上都设置才能生效
-47. GUI应用的测试需要添加单元测试来验证核心逻辑
+48. Slint组件的回调需要在使用处显式绑定
+49. 独立窗口组件需要在Rust端创建并显示
+50. 跨页面数据传递可以使用全局适配器的属性作为剪贴板
