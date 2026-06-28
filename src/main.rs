@@ -444,6 +444,58 @@ fn update_pricing_progress(app: &ui::App, categories: &[ui::ImageCategoryData]) 
     app.global::<ui::PricingPageAdapter>().set_processed_count(processed);
 }
 
+/// 扫描final文件夹，返回文件名到路径的映射
+fn scan_final_folder(final_dir: &Path) -> std::collections::HashMap<String, std::path::PathBuf> {
+    let mut result = std::collections::HashMap::new();
+    if !final_dir.exists() {
+        return result;
+    }
+    
+    if let Ok(entries) = std::fs::read_dir(final_dir) {
+        for entry in entries.flatten() {
+            if let Some(name) = entry.file_name().to_str() {
+                // 只处理图片文件
+                if name.ends_with(".jpg") || name.ends_with(".jpeg") || 
+                   name.ends_with(".png") || name.ends_with(".bmp") {
+                    result.insert(name.to_string(), entry.path());
+                }
+            }
+        }
+    }
+    
+    result
+}
+
+/// 解析文件名中的时间部分
+/// 文件名格式：2026-04-09-12-25-49.jpg
+/// 返回：2026-04-09 12:25:49
+fn parse_time_from_filename(filename: &str) -> Option<String> {
+    // 移除扩展名
+    let name = filename.rsplit('.').next().unwrap_or(filename);
+    
+    // 分割日期和时间部分
+    let parts: Vec<&str> = name.split('-').collect();
+    if parts.len() >= 6 {
+        let date = format!("{}-{}-{}", parts[0], parts[1], parts[2]);
+        let time = format!("{}:{}:{}", parts[3], parts[4], parts[5]);
+        Some(format!("{} {}", date, time))
+    } else {
+        None
+    }
+}
+
+/// 计算文件内容的哈希值（用于识别相同的Excel文件）
+fn calculate_file_hash(file_path: &Path) -> Option<String> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(file_path).ok()?;
+    let mut content = Vec::new();
+    file.read_to_end(&mut content).ok()?;
+    
+    // 简单的哈希计算（实际项目中应使用更可靠的哈希算法）
+    let hash = content.iter().fold(0u64, |acc, &x| acc.wrapping_mul(31).wrapping_add(x as u64));
+    Some(format!("{:x}", hash))
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize database
     let conn = Connection::open("imgpick.db")?;
@@ -1214,7 +1266,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .set_title("选择Excel文件");
             
             if let Some(file_path) = file_dialog.pick_file() {
+                // 显示导入中状态
+                app.global::<ui::ExcelPageAdapter>().set_status_message("正在导入...".into());
+                
                 let excel_manager = excel_manager::ExcelManager::new(db_clone.clone());
+                let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
+                let final_dir = base_dir_clone.join("plans").join(&plan_name).join("final");
+                
+                // 计算Excel文件哈希（用于识别相同的Excel文件）
+                let excel_hash = calculate_file_hash(&file_path);
                 
                 match excel_manager.import_excel(plan_id as i64, &file_path) {
                     Ok(data) => {
@@ -1242,17 +1302,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .unwrap_or("")
                                 .to_string();
                             
-                            eprintln!("导入数据 {}: 样本={}, 孔位={}, 时间={}", i + 1, excel_data.sample_id, hole_result, test_time);
-                            
                             excel_rows.push(ui::ExcelRowData {
                                 index: (i + 1) as i32,
                                 sample_id: excel_data.sample_id.clone().into(),
                                 hole_result: hole_result.into(),
                                 test_time: test_time.clone().into(),
-                                file_path: test_time.clone().into(),  // 暂时和考察时间一致
+                                file_path: test_time.clone().into(),
                                 matched_image: "".into(),
                                 category: "".into(),
                             });
+                        }
+                        
+                        // 异步扫描final文件夹，恢复匹配状态
+                        let final_images = scan_final_folder(&final_dir);
+                        if !final_images.is_empty() {
+                            // 构建时间到文件名的映射
+                            let mut time_to_file: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+                            for (filename, _) in &final_images {
+                                if let Some(time_str) = parse_time_from_filename(filename) {
+                                    time_to_file.insert(time_str, filename.clone());
+                                }
+                            }
+                            
+                            // 恢复匹配状态
+                            let mut matched_count = 0;
+                            for row in excel_rows.iter_mut() {
+                                let test_time = row.test_time.to_string();
+                                if let Some(matched_filename) = time_to_file.get(&test_time) {
+                                    row.matched_image = matched_filename.clone().into();
+                                    matched_count += 1;
+                                }
+                            }
+                            
+                            eprintln!("恢复匹配状态: {} 张图片", matched_count);
                         }
                         
                         // 根据active_card更新对应的数据列表
@@ -1272,8 +1354,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             _ => {}
                         }
                         
+                        let final_count = final_images.len();
                         app.global::<ui::ExcelPageAdapter>().set_status_message(
-                            format!("成功导入 {} 条数据", count).into()
+                            format!("成功导入 {} 条数据，final目录有 {} 张图片", count, final_count).into()
                         );
                     }
                     Err(e) => {
