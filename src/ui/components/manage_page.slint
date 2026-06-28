@@ -1,0 +1,213 @@
+import { Button, ScrollView } from "std-widgets.slint";
+import { ImageCategoryData } from "../structs.slint";
+import { ManagePageAdapter } from "../globals.slint";
+import { ImageCategoryItem } from "image_category_item.slint";
+
+export component ManagePage inherits Rectangle {
+    in-out property <int> plan-id: 0;
+    in-out property <string> plan-name: "";
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 8px;
+
+        Text {
+            text: "图片管理";
+            font-size: 18px;
+            font-weight: 700;
+            color: #1976D2;
+            height: 28px;
+        }
+
+        // 价位槽 + 项目类型（仅已标价图片显示）
+        HorizontalLayout {
+            spacing: 4px;
+            height: 30px;
+
+            // 8个价位槽
+            Rectangle { border-width: 1px; border-color: #bdbdbd; border-radius: 4px; background: white; width: 50px; height: 30px;
+                Text { text: ManagePageAdapter.slot1; horizontal-alignment: center; vertical-alignment: center; color: #333; font-size: 11px; }
+            }
+            Rectangle { border-width: 1px; border-color: #bdbdbd; border-radius: 4px; background: white; width: 50px; height: 30px;
+                Text { text: ManagePageAdapter.slot2; horizontal-alignment: center; vertical-alignment: center; color: #333; font-size: 11px; }
+            }
+            Rectangle { border-width: 1px; border-color: #bdbdbd; border-radius: 4px; background: white; width: 50px; height: 30px;
+                Text { text: ManagePageAdapter.slot3; horizontal-alignment: center; vertical-alignment: center; color: #333; font-size: 11px; }
+            }
+            Rectangle { border-width: 1px; border-color: #bdbdbd; border-radius: 4px; background: white; width: 50px; height: 30px;
+                Text { text: ManagePageAdapter.slot4; horizontal-alignment: center; vertical-alignment: center; color: #333; font-size: 11px; }
+            }
+            Rectangle { border-width: 1px; border-color: #bdbdbd; border-radius: 4px; background: white; width: 50px; height: 30px;
+                Text { text: ManagePageAdapter.slot5; horizontal-alignment: center; vertical-alignment: center; color: #333; font-size: 11px; }
+            }
+            Rectangle { border-width: 1px; border-color: #bdbdbd; border-radius: 4px; background: white; width: 50px; height: 30px;
+                Text { text: ManagePageAdapter.slot6; horizontal-alignment: center; vertical-alignment: center; color: #333; font-size: 11px; }
+            }
+            Rectangle { border-width: 1px; border-color: #bdbdbd; border-radius: 4px; background: white; width: 50px; height: 30px;
+                Text { text: ManagePageAdapter.slot7; horizontal-alignment: center; vertical-alignment: center; color: #333; font-size: 11px; }
+            }
+            Rectangle { border-width: 1px; border-color: #bdbdbd; border-radius: 4px; background: white; width: 50px; height: 30px;
+                Text { text: ManagePageAdapter.slot8; horizontal-alignment: center; vertical-alignment: center; color: #333; font-size: 11px; }
+            }
+
+            Rectangle { width: 8px; background: transparent; }
+
+            // 项目类型显示
+            Rectangle {
+                width: 100px;
+                height: 30px;
+                background: ManagePageAdapter.project-type-display != "" ? #e3f2fd : #f5f5f5;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: ManagePageAdapter.project-type-display != "" ? #1976D2 : #e0e0e0;
+                Text {
+                    text: ManagePageAdapter.project-type-display != "" ? ManagePageAdapter.project-type-display : "未标价";
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    color: ManagePageAdapter.project-type-display != "" ? #1976D2 : #999;
+                    font-size: 12px;
+                }
+            }
+        }
+
+        // 图片显示区域 + 图片文件集合
+        Rectangle {
+            vertical-stretch: 1;
+            background: #f0f0f0;
+            border-radius: 4px;
+            clip: true;
+
+            HorizontalLayout {
+                spacing: 12px;
+
+                // 图片显示区域 (70%)
+                Rectangle {
+                    horizontal-stretch: 7;
+                    background: white;
+                    border-radius: 4px;
+                    border-width: 1px;
+                    border-color: #e0e0e0;
+
+                    VerticalLayout {
+                        padding: 8px;
+                        spacing: 4px;
+
+                        Text {
+                            text: ManagePageAdapter.selected-image-path != "" ? "当前图片: " + ManagePageAdapter.selected-image-path : "图片显示区域";
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: #666;
+                            height: 20px;
+                        }
+
+                        Rectangle {
+                            vertical-stretch: 1;
+                            background: #fafafa;
+                            border-radius: 4px;
+
+                            if ManagePageAdapter.selected-image-path == "": Text {
+                                text: "点击右侧图片名查看";
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                color: #999;
+                            }
+
+                            if ManagePageAdapter.selected-image-path != "": Image {
+                                source: ManagePageAdapter.selected-image-data;
+                                image-fit: contain;
+                                width: 100%;
+                                height: 100%;
+                            }
+                        }
+                    }
+                }
+
+                // 图片文件集合面板 (30%)
+                Rectangle {
+                    horizontal-stretch: 3;
+                    background: white;
+                    border-radius: 4px;
+                    border-width: 1px;
+                    border-color: #e0e0e0;
+
+                    VerticalLayout {
+                        padding: 8px;
+                        spacing: 4px;
+
+                        Text {
+                            text: "图片文件集合";
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: #666;
+                            height: 20px;
+                        }
+
+                        Rectangle {
+                            vertical-stretch: 1;
+                            background: #fafafa;
+                            border-radius: 4px;
+                            clip: true;
+
+                            if ManagePageAdapter.categories.length == 0: Text {
+                                text: "暂无数据";
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                color: #999;
+                            }
+
+                            if ManagePageAdapter.categories.length > 0: VerticalLayout {
+                                for category[i] in ManagePageAdapter.categories: ImageCategoryItem {
+                                    category-name: category.name;
+                                    display-name: category.display-name;
+                                    image-count: category.count;
+                                    expanded: category.expanded;
+                                    images: category.images;
+                                    is-selected: ManagePageAdapter.selected-category == i;
+                                    selected-image-index: ManagePageAdapter.current-category-index == i ? ManagePageAdapter.current-image-index : -1;
+                                    
+                                    // 子分类属性
+                                    has-subcategories: category.has-subcategories;
+                                    subcategory-names: category.subcategory-names;
+                                    subcategory-counts: category.subcategory-counts;
+                                    subcategory-expanded: category.subcategory-expanded;
+                                    subcategory-1-images: category.subcategory-1-images;
+                                    subcategory-2-images: category.subcategory-2-images;
+                                    subcategory-3-images: category.subcategory-3-images;
+                                    
+                                    // 子分类选中状态
+                                    selected-subcategory: ManagePageAdapter.current-category-index == i ? ManagePageAdapter.selected-subcategory : -1;
+                                    selected-subcategory-image: ManagePageAdapter.current-category-index == i ? ManagePageAdapter.selected-subcategory-image : -1;
+
+                                    toggle-clicked => {
+                                        ManagePageAdapter.toggle-category(i);
+                                    }
+
+                                    image-clicked(idx) => {
+                                        ManagePageAdapter.select-category(i);
+                                        ManagePageAdapter.select-image(idx);
+                                    }
+                                    
+                                    subcategory-clicked(idx) => {
+                                        ManagePageAdapter.toggle-subcategory(i, idx);
+                                    }
+                                    
+                                    subcategory-image-clicked(sub_idx, img_idx) => {
+                                        ManagePageAdapter.subcategory-image-clicked(i, sub_idx, img_idx);
+                                    }
+                                    
+                                    image-right-clicked(cat_idx, img_idx, img_name) => {
+                                        ManagePageAdapter.show-context-menu-at(0, 0, i, img_idx, img_name);
+                                    }
+                                    
+                                    subcategory-image-right-clicked(cat_idx, sub_idx, img_idx, img_name) => {
+                                        ManagePageAdapter.show-context-menu-at(0, 0, i, img_idx, img_name);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,2924 @@
+import {
+    Button,
+    VerticalBox,
+    HorizontalBox,
+    ListView,
+    TextEdit,
+    LineEdit,
+    ComboBox,
+    ScrollView,
+    CheckBox,
+} from "std-widgets.slint";
+
+// 计划项组件 - 卡片样式（横向布局：名称在左，删除在右）
+export component PlanItem inherits Rectangle {
+    in-out property <int> plan-id: 0;
+    in-out property <string> plan-name: "";
+    in-out property <bool> is-selected: false;
+    in-out property <bool> is-editing: false;
+
+    callback clicked();
+    callback delete-clicked();
+    callback rename-clicked(string);
+
+    width: 120px;
+    height: 46px;
+    border-radius: 8px;
+    background: is-selected ? #e3f2fd : touch.has-hover ? #f5f5f5 : white;
+    border-width: 2px;
+    border-color: is-selected ? #1976D2 : #e0e0e0;
+    clip: true;
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    HorizontalLayout {
+        padding: 0;
+        spacing: 0;
+
+        // 计划名称区域
+        Rectangle {
+            horizontal-stretch: 1;
+            background: transparent;
+
+            if is-editing: LineEdit {
+                text: plan-name;
+                horizontal-stretch: 1;
+                accepted(text) => {
+                    root.rename-clicked(text);
+                }
+            }
+            if !is-editing: Text {
+                text: plan-name;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                color: is-selected ? #1976D2 : #333;
+                font-size: 12px;
+                overflow: elide;
+            }
+        }
+
+        // 删除按钮区域（右侧）
+        Rectangle {
+            width: 32px;
+            background: touch-del.has-hover ? #ffebee : transparent;
+
+            touch-del := TouchArea {
+                clicked => {
+                    root.delete-clicked();
+                }
+            }
+
+            Text {
+                text: "🗑️";
+                font-size: 14px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+// 计划数据结构
+export struct PlanData {
+    id: int,
+    name: string,
+}
+
+// 计划页面适配器（全局单例）
+export global PlanPageAdapter {
+    in-out property <[PlanData]> plans: [];
+    in-out property <int> plan-columns: 6;
+
+    callback create-plan(string);
+    callback delete-plan(int);
+    callback rename-plan(int, string);
+    callback select-plan(int);
+}
+
+// 图片分类数据结构
+export struct ImageCategoryData {
+    name: string,
+    display-name: string,
+    count: int,
+    expanded: bool,
+    images: [string],
+    // 子分类属性
+    has-subcategories: bool,
+    subcategory-names: [string],
+    subcategory-counts: [int],
+    subcategory-expanded: [bool],
+    subcategory-1-images: [string],
+    subcategory-2-images: [string],
+    subcategory-3-images: [string],
+}
+
+// 图片分类项组件（可展开）
+export component ImageCategoryItem inherits Rectangle {
+    in-out property <string> category-name: "";
+    in-out property <string> display-name: "";
+    in-out property <int> image-count: 0;
+    in-out property <bool> expanded: false;
+    in-out property <[string]> images: [];
+    in-out property <bool> is-selected: false;
+    in-out property <int> selected-image-index: -1;
+    
+    // 子分类属性
+    in-out property <bool> has-subcategories: false;
+    in-out property <[string]> subcategory-names: [];
+    in-out property <[int]> subcategory-counts: [];
+    in-out property <[bool]> subcategory-expanded: [];
+    in-out property <[string]> subcategory-1-images: [];
+    in-out property <[string]> subcategory-2-images: [];
+    in-out property <[string]> subcategory-3-images: [];
+    
+    // 每个子分类单独跟踪选中状态
+    in-out property <int> selected-subcategory: -1;  // 选中的子分类索引 (0,1,2)
+    in-out property <int> selected-subcategory-image: -1;  // 选中的子分类内图片索引
+    
+    callback toggle-clicked();
+    callback image-clicked(int);
+    callback subcategory-clicked(int);
+    callback subcategory-image-clicked(int, int);  // (子分类索引, 图片索引)
+    callback image-right-clicked(int, int, string);  // (category-index, image-index, image-name)
+    callback subcategory-image-right-clicked(int, int, int, string);  // (category-index, subcategory-index, image-index, image-name)
+    
+    // 计算总高度
+    height: expanded ? (30px + (has-subcategories ? 3 * 30px + (subcategory-expanded[0] ? subcategory-1-images.length * 24px : 0px) + (subcategory-expanded[1] ? subcategory-2-images.length * 24px : 0px) + (subcategory-expanded[2] ? subcategory-3-images.length * 24px : 0px) : images.length * 24px)) : 30px;
+    background: is-selected ? #e3f2fd : #fafafa;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: #e0e0e0;
+    
+    VerticalLayout {
+        padding: 0;
+        spacing: 0;
+        
+        // 分类标题栏
+        Rectangle {
+            height: 30px;
+            background: header-touch.has-hover ? #f0f0f0 : transparent;
+            
+            header-touch := TouchArea {
+                clicked => {
+                    root.toggle-clicked();
+                }
+            }
+            
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+                spacing: 4px;
+                
+                Text {
+                    text: expanded ? "▼" : "▶";
+                    font-size: 10px;
+                    color: #666;
+                    vertical-alignment: center;
+                    width: 12px;
+                }
+                
+                Text {
+                    text: display-name;
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: #333;
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
+                }
+                
+                Text {
+                    text: "(" + image-count + ")";
+                    font-size: 11px;
+                    color: #999;
+                    vertical-alignment: center;
+                }
+            }
+        }
+        
+        // 子分类列表（展开时显示，且有子分类）
+        if expanded && has-subcategories: VerticalLayout {
+            padding-left: 16px;
+            padding-right: 8px;
+            padding-bottom: 4px;
+            spacing: 2px;
+            
+            // 子分类1
+            Rectangle {
+                height: 30px;
+                background: sub1-touch.has-hover ? #f0f0f0 : transparent;
+                border-radius: 3px;
+                
+                sub1-touch := TouchArea {
+                    clicked => { root.subcategory-clicked(0); }
+                }
+                
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 4px;
+                    
+                    Text {
+                        text: subcategory-expanded[0] ? "▼" : "▶";
+                        font-size: 10px;
+                        color: #666;
+                        vertical-alignment: center;
+                        width: 12px;
+                    }
+                    
+                    Text {
+                        text: subcategory-names[0];
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: #333;
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+                    
+                    Text {
+                        text: "(" + subcategory-counts[0] + ")";
+                        font-size: 11px;
+                        color: #999;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            
+            // 子分类1的图片列表
+            if subcategory-expanded[0] && subcategory-1-images.length > 0: VerticalLayout {
+                padding-left: 20px;
+                padding-right: 4px;
+                spacing: 2px;
+                
+                for image[j] in subcategory-1-images: Rectangle {
+                    height: 22px;
+                    background: (selected-subcategory == 0 && selected-subcategory-image == j) ? #bbdefb : image-touch1.has-hover ? #e8e8e8 : transparent;
+                    border-radius: 2px;
+                    
+                    image-touch1 := TouchArea {
+                        clicked => { root.subcategory-image-clicked(0, j); }
+                        pointer-event(event) => {
+                            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                                root.subcategory-image-right-clicked(0, 0, j, image);
+                            }
+                        }
+                    }
+                    
+                    Text {
+                        text: image;
+                        font-size: 11px;
+                        color: (selected-subcategory == 0 && selected-subcategory-image == j) ? #1976D2 : #555;
+                        font-weight: (selected-subcategory == 0 && selected-subcategory-image == j) ? 600 : 400;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+            
+            // 子分类2
+            Rectangle {
+                height: 30px;
+                background: sub2-touch.has-hover ? #f0f0f0 : transparent;
+                border-radius: 3px;
+                
+                sub2-touch := TouchArea {
+                    clicked => { root.subcategory-clicked(1); }
+                }
+                
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 4px;
+                    
+                    Text {
+                        text: subcategory-expanded[1] ? "▼" : "▶";
+                        font-size: 10px;
+                        color: #666;
+                        vertical-alignment: center;
+                        width: 12px;
+                    }
+                    
+                    Text {
+                        text: subcategory-names[1];
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: #333;
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+                    
+                    Text {
+                        text: "(" + subcategory-counts[1] + ")";
+                        font-size: 11px;
+                        color: #999;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            
+            // 子分类2的图片列表
+            if subcategory-expanded[1] && subcategory-2-images.length > 0: VerticalLayout {
+                padding-left: 20px;
+                padding-right: 4px;
+                spacing: 2px;
+                
+                for image[j] in subcategory-2-images: Rectangle {
+                    height: 22px;
+                    background: (selected-subcategory == 1 && selected-subcategory-image == j) ? #bbdefb : image-touch2.has-hover ? #e8e8e8 : transparent;
+                    border-radius: 2px;
+                    
+                    image-touch2 := TouchArea {
+                        clicked => { root.subcategory-image-clicked(1, j); }
+                    }
+                    
+                    Text {
+                        text: image;
+                        font-size: 11px;
+                        color: (selected-subcategory == 1 && selected-subcategory-image == j) ? #1976D2 : #555;
+                        font-weight: (selected-subcategory == 1 && selected-subcategory-image == j) ? 600 : 400;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+            
+            // 子分类3
+            Rectangle {
+                height: 30px;
+                background: sub3-touch.has-hover ? #f0f0f0 : transparent;
+                border-radius: 3px;
+                
+                sub3-touch := TouchArea {
+                    clicked => { root.subcategory-clicked(2); }
+                }
+                
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 4px;
+                    
+                    Text {
+                        text: subcategory-expanded[2] ? "▼" : "▶";
+                        font-size: 10px;
+                        color: #666;
+                        vertical-alignment: center;
+                        width: 12px;
+                    }
+                    
+                    Text {
+                        text: subcategory-names[2];
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: #333;
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+                    
+                    Text {
+                        text: "(" + subcategory-counts[2] + ")";
+                        font-size: 11px;
+                        color: #999;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            
+            // 子分类3的图片列表
+            if subcategory-expanded[2] && subcategory-3-images.length > 0: VerticalLayout {
+                padding-left: 20px;
+                padding-right: 4px;
+                spacing: 2px;
+                
+                for image[j] in subcategory-3-images: Rectangle {
+                    height: 22px;
+                    background: (selected-subcategory == 2 && selected-subcategory-image == j) ? #bbdefb : image-touch3.has-hover ? #e8e8e8 : transparent;
+                    border-radius: 2px;
+                    
+                    image-touch3 := TouchArea {
+                        clicked => { root.subcategory-image-clicked(2, j); }
+                    }
+                    
+                    Text {
+                        text: image;
+                        font-size: 11px;
+                        color: (selected-subcategory == 2 && selected-subcategory-image == j) ? #1976D2 : #555;
+                        font-weight: (selected-subcategory == 2 && selected-subcategory-image == j) ? 600 : 400;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+        
+        // 普通分类的图片列表（展开时显示，且images不为空）
+        if expanded && !has-subcategories && images.length > 0: VerticalLayout {
+            padding-left: 24px;
+            padding-right: 8px;
+            padding-bottom: 4px;
+            spacing: 2px;
+            
+            for image[i] in images: Rectangle {
+                height: 22px;
+                background: i == selected-image-index ? #bbdefb : image-touch.has-hover ? #e8e8e8 : transparent;
+                border-radius: 2px;
+                
+                image-touch := TouchArea {
+                    clicked => { root.image-clicked(i); }
+                    pointer-event(event) => {
+                        if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                            root.image-right-clicked(0, i, image);
+                        }
+                    }
+                }
+                
+                Text {
+                    text: image;
+                    font-size: 11px;
+                    color: i == selected-image-index ? #1976D2 : #555;
+                    font-weight: i == selected-image-index ? 600 : 400;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+}
+
+// 图片管理页面适配器（全局单例）
+export global ManagePageAdapter {
+    in-out property <[ImageCategoryData]> categories: [];
+    in-out property <[string]> current-images: [];
+    in-out property <int> selected-category: -1;
+    in-out property <int> selected-image: -1;
+    in-out property <string> selected-image-path: "";
+    in-out property <image> selected-image-data;
+    in-out property <string> plan-name: "";
+    
+    // 已标价图片的价位槽和项目类型
+    in-out property <string> slot1: "";
+    in-out property <string> slot2: "";
+    in-out property <string> slot3: "";
+    in-out property <string> slot4: "";
+    in-out property <string> slot5: "";
+    in-out property <string> slot6: "";
+    in-out property <string> slot7: "";
+    in-out property <string> slot8: "";
+    in-out property <string> project-type-display: "";
+    
+    // 当前选中的图片索引（用于高亮显示）
+    in-out property <int> current-image-index: -1;
+    in-out property <int> current-category-index: -1;
+    
+    // 子分类选中状态（用于高亮显示）
+    in-out property <int> selected-subcategory: -1;  // 选中的子分类索引 (0,1,2)
+    in-out property <int> selected-subcategory-image: -1;  // 选中的子分类内图片索引
+    
+    callback load-categories(int);
+    callback toggle-category(int);
+    callback select-category(int);
+    callback select-image(int);
+    callback toggle-subcategory(int, int);
+    callback subcategory-image-clicked(int, int, int);  // (分类索引, 子分类索引, 图片索引)
+    
+    // 右键菜单相关
+    in-out property <bool> show-context-menu: false;
+    in-out property <int> context-menu-x: 0;
+    in-out property <int> context-menu-y: 0;
+    in-out property <int> context-category-index: -1;
+    in-out property <int> context-image-index: -1;
+    in-out property <string> context-image-name: "";
+    
+    // 手动匹配相关
+    in-out property <bool> show-manual-match: false;
+    in-out property <string> manual-match-sample-id: "";
+    in-out property <string> manual-match-hole-result: "";
+    in-out property <string> manual-match-test-time: "";
+    
+    callback show-context-menu-at(int, int, int, int, string);  // (x, y, category-index, image-index, image-name)
+    callback hide-context-menu();
+    callback manual-match-image();  // 手动匹配当前图片
+    callback paste-from-clipboard();  // 从剪贴板粘贴数据
+    callback search-by-hole-result(string);  // 根据孔位结果搜索图片
+}
+
+// Excel行数据结构
+export struct ExcelRowData {
+    index: int,
+    sample-id: string,
+    hole-result: string,
+    test-time: string,
+    file-path: string,
+    matched-image: string,
+    category: string,
+}
+
+// Excel配对页面适配器（全局单例）
+export global ExcelPageAdapter {
+    // 当前活动的card: 0=血型, 1=抗筛, 2=交叉配血
+    in-out property <int> active-card: 0;
+    
+    // 三个card的Excel数据
+    in-out property <[ExcelRowData]> excel-rows-abo: [];  // 血型
+    in-out property <[ExcelRowData]> excel-rows-as: [];   // 抗筛
+    in-out property <[ExcelRowData]> excel-rows-cm: [];   // 交叉配血
+    
+    // 当前显示的Excel数据（根据active-card切换）
+    in-out property <[ExcelRowData]> current-excel-rows: [];
+    
+    in-out property <int> selected-row: -1;
+    in-out property <string> status-message: "";
+    
+    // 图片预览相关
+    in-out property <bool> show-image-preview: false;
+    in-out property <image> preview-image;
+    in-out property <string> preview-image-name: "";
+    in-out property <int> preview-row-index: -1;
+    in-out property <[string]> matched-images: [];  // 所有匹配的图片名列表
+    in-out property <int> current-matched-index: 0;  // 当前显示的匹配图片索引
+    
+    // 剪贴板相关（用于跨页面数据传递）
+    in-out property <string> clipboard-sample-id: "";
+    in-out property <string> clipboard-hole-result: "";
+    in-out property <string> clipboard-test-time: "";
+    
+    // 回调
+    callback import-excel();
+    callback export-result();
+    callback select-row(int);
+    callback switch-card(int);  // 切换card
+    callback find-matching-image(int);  // 查找匹配图片
+    callback confirm-image-match(int, string);  // 确认图片匹配
+    callback close-image-preview();  // 关闭预览
+    callback unbind-image(int);  // 取消绑定
+    callback next-matched-image();  // 下一张匹配图片
+    callback prev-matched-image();  // 上一张匹配图片
+    callback copy-sample-id(int);  // 复制样本ID
+    callback copy-hole-result(int);  // 复制孔位结果
+    callback copy-test-time(int);  // 复制考察时间
+    
+    // 切换card时更新current-excel-rows
+    switch-card(index) => {
+        active-card = index;
+        if (index == 0) {
+            current-excel-rows = excel-rows-abo;
+        } else if (index == 1) {
+            current-excel-rows = excel-rows-as;
+        } else if (index == 2) {
+            current-excel-rows = excel-rows-cm;
+        }
+        selected-row = -1;
+        status-message = "";  // 切换card时清除状态消息
+    }
+}
+
+// 计划管理页面
+export component PlanPage inherits Rectangle {
+    in-out property <int> plan-id: 0;
+    in-out property <string> plan-name: "";
+
+    // 修改这两项即可，列数自动计算
+    property <length> card-width: 120px;
+    property <length> list-width: 620px;
+    property <length> card-spacing: 12px;
+
+    VerticalLayout {
+        alignment: start;
+        padding: 10px;
+        spacing: 12px;
+
+        Text {
+            text: "添加计划";
+            font-size: 18px;
+            font-weight: 700;
+            color: #1976D2;
+            height: 28px;
+        }
+
+        HorizontalLayout {
+            height: 40px;
+            spacing: 8px;
+
+            new-plan-input := LineEdit {
+                placeholder-text: "输入新计划名称...";
+                width: 300px;
+                accepted(text) => {
+                    if text != "" {
+                        PlanPageAdapter.create-plan(text);
+                        self.text = "";
+                    }
+                }
+            }
+
+            Button {
+                text: "添加";
+                width: 60px;
+                clicked => {
+                    if new-plan-input.text != "" {
+                        PlanPageAdapter.create-plan(new-plan-input.text);
+                        new-plan-input.text = "";
+                    }
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+                background: transparent;
+            }
+        }
+
+        plan-list := Rectangle {
+            vertical-stretch: 1;
+            horizontal-stretch: 1;
+            min-height: 316px;
+            background: #fafafa;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: #e0e0e0;
+            clip: true;
+
+            VerticalLayout {
+                padding: 12px;
+                spacing: 8px;
+                alignment: start;
+
+                Text {
+                    text: "计划列表";
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: #666;
+                    height: 24px;
+                }
+
+                if PlanPageAdapter.plans.length > 0: GridLayout {
+                    spacing: 12px;
+
+                    for plan[i] in PlanPageAdapter.plans: PlanItem {
+                        row: i / PlanPageAdapter.plan-columns;
+                        col: mod(i, PlanPageAdapter.plan-columns);
+                        plan-id: plan.id;
+                        plan-name: plan.name;
+                        is-selected: plan.id == root.plan-id;
+                        clicked => {
+                            PlanPageAdapter.select-plan(plan.id);
+                        }
+                        delete-clicked => {
+                            PlanPageAdapter.delete-plan(plan.id);
+                        }
+                        rename-clicked(name) => {
+                            PlanPageAdapter.rename-plan(plan.id, name);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// 图片标价页面适配器（全局单例）
+export global PricingPageAdapter {
+    in-out property <int> plan-id: 0;
+    in-out property <string> plan-name: "";
+    in-out property <int> processed-count: 0;
+    in-out property <int> total-count: 0;
+    in-out property <[string]> folders: [];
+    in-out property <int> selected-folder: -1;
+    in-out property <[string]> images: [];  // 当前文件夹的图片路径列表
+    in-out property <int> current-image-index: -1;  // 当前显示的图片索引
+    in-out property <string> current-image-path: "";  // 当前显示的图片路径
+    in-out property <string> folder-prefix: "";  // 完整文件夹路径前缀
+    in-out property <image> current-image;  // 当前显示的图片
+    
+    // 8个价位输入槽位
+    in-out property <string> slot1: "";
+    in-out property <string> slot2: "";
+    in-out property <string> slot3: "";
+    in-out property <string> slot4: "";
+    in-out property <string> slot5: "";
+    in-out property <string> slot6: "";
+    in-out property <string> slot7: "";
+    in-out property <string> slot8: "";
+    // 当前输入位置 (0-7)
+    in-out property <int> current-slot: 0;
+    // 当前图片种类：""=未选择, "blood"=血型, "antibody"=抗筛, "crossmatch"=交叉配血
+    in-out property <string> project-type: "";
+    // 操作状态消息
+    in-out property <string> status-message: "";
+
+    callback select-folder-item(int);
+    callback load-images(int);  // 加载指定文件夹的图片
+    callback next-image();
+    callback prev-image();
+    callback confirm-pricing(int, string, string, string, string);  // 确认标价：plan-id、图片名、路径、价位、种类
+    callback skip-image(int, string);  // 跳过：plan-id、图片路径
+    callback clear-slots();  // 清空所有槽位
+    callback input-code(string);  // 输入价位
+    callback focus-slot(int);  // 聚焦槽位
+    callback delete-slot(int);  // 删除槽位
+    callback set-project-type(string);  // 设置图片种类
+    callback clear-status();  // 清除状态消息
+    callback clear-all-priced(int);  // 清除所有已标价图片
+    
+    // 验证输入组合是否有效
+    // 返回: "" 表示有效，非空表示错误信息
+    pure function validate-input-combo() -> string {
+        let has1 = slot1 != "";
+        let has2 = slot2 != "";
+        let has3 = slot3 != "";
+        let has4 = slot4 != "";
+        let has5 = slot5 != "";
+        let has6 = slot6 != "";
+        let has7 = slot7 != "";
+        let has8 = slot8 != "";
+        
+        // A: 8位全填
+        if has1 && has2 && has3 && has4 && has5 && has6 && has7 && has8 {
+            return "";
+        }
+        // B: 仅前3位有值
+        if has1 && has2 && has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+            return "";
+        }
+        // C: 仅前2位有值
+        if has1 && has2 && !has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+            return "";
+        }
+        // 其他情况
+        return "无效的输入组合";
+    }
+    
+    // 检查输入组合与种类是否匹配
+    // 返回: "" 表示匹配，非空表示错误信息
+    pure function validate-type-combo() -> string {
+        let has1 = slot1 != "";
+        let has2 = slot2 != "";
+        let has3 = slot3 != "";
+        let has4 = slot4 != "";
+        let has5 = slot5 != "";
+        let has6 = slot6 != "";
+        let has7 = slot7 != "";
+        let has8 = slot8 != "";
+        
+        // A: 8位全填 -> 血型
+        if has1 && has2 && has3 && has4 && has5 && has6 && has7 && has8 {
+            if project-type != "blood" {
+                return "8位输入需选择血型";
+            }
+            return "";
+        }
+        // B: 仅前3位有值 -> 交叉配血
+        if has1 && has2 && has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+            if project-type != "crossmatch" {
+                return "3位输入需选择交叉配血";
+            }
+            return "";
+        }
+        // C: 仅前2位有值 -> 抗筛
+        if has1 && has2 && !has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+            if project-type != "antibody" {
+                return "2位输入需选择抗筛";
+            }
+            return "";
+        }
+        return "无效的输入组合";
+    }
+    
+    // 输入价位函数
+    input-code(code) => {
+        if current-slot == 0 {
+            slot1 = code;
+            current-slot = 1;
+        } else if current-slot == 1 {
+            slot2 = code;
+            current-slot = 2;
+        } else if current-slot == 2 {
+            slot3 = code;
+            current-slot = 3;
+        } else if current-slot == 3 {
+            slot4 = code;
+            current-slot = 4;
+        } else if current-slot == 4 {
+            slot5 = code;
+            current-slot = 5;
+        } else if current-slot == 5 {
+            slot6 = code;
+            current-slot = 6;
+        } else if current-slot == 6 {
+            slot7 = code;
+            current-slot = 7;
+        } else if current-slot == 7 {
+            slot8 = code;
+            current-slot = 8;
+        }
+    }
+    
+    // 聚焦到指定槽位
+    focus-slot(index) => {
+        current-slot = index;
+    }
+    
+    // 删除槽位内容
+    delete-slot(index) => {
+        if current-slot == 8 {
+            // 无聚焦状态：从右向左删除最后一个非空槽位
+            if slot8 != "" { slot8 = ""; current-slot = 7; }
+            else if slot7 != "" { slot7 = ""; current-slot = 6; }
+            else if slot6 != "" { slot6 = ""; current-slot = 5; }
+            else if slot5 != "" { slot5 = ""; current-slot = 4; }
+            else if slot4 != "" { slot4 = ""; current-slot = 3; }
+            else if slot3 != "" { slot3 = ""; current-slot = 2; }
+            else if slot2 != "" { slot2 = ""; current-slot = 1; }
+            else if slot1 != "" { slot1 = ""; current-slot = 0; }
+        } else {
+            // 有聚焦状态：删除聚焦位置的值，聚焦向左移动
+            if current-slot == 7 { slot8 = ""; current-slot = 6; }
+            else if current-slot == 6 { slot7 = ""; current-slot = 5; }
+            else if current-slot == 5 { slot6 = ""; current-slot = 4; }
+            else if current-slot == 4 { slot5 = ""; current-slot = 3; }
+            else if current-slot == 3 { slot4 = ""; current-slot = 2; }
+            else if current-slot == 2 { slot3 = ""; current-slot = 1; }
+            else if current-slot == 1 { slot2 = ""; current-slot = 0; }
+            else if current-slot == 0 { slot1 = ""; }
+        }
+    }
+    
+    // 清空所有槽位
+    clear-slots() => {
+        slot1 = "";
+        slot2 = "";
+        slot3 = "";
+        slot4 = "";
+        slot5 = "";
+        slot6 = "";
+        slot7 = "";
+        slot8 = "";
+        current-slot = 0;
+    }
+}
+
+// 图片标价页面-分类项组件（紧凑版）
+export component PricingCategoryItem inherits Rectangle {
+    in-out property <string> category-name: "";
+    in-out property <string> display-name: "";
+    in-out property <int> image-count: 0;
+    in-out property <bool> expanded: false;
+    in-out property <[string]> images: [];
+    in-out property <bool> is-selected: false;
+    in-out property <int> selected-image-index: -1;
+    
+    // 子分类属性
+    in-out property <bool> has-subcategories: false;
+    in-out property <[string]> subcategory-names: [];
+    in-out property <[int]> subcategory-counts: [];
+    in-out property <[bool]> subcategory-expanded: [];
+    in-out property <[string]> subcategory-1-images: [];
+    in-out property <[string]> subcategory-2-images: [];
+    in-out property <[string]> subcategory-3-images: [];
+
+    callback toggle-clicked();
+    callback image-clicked(int);
+    callback subcategory-clicked(int);
+    callback subcategory-image-clicked(int, int);  // (子分类索引, 图片索引)
+    
+    // 每个子分类单独跟踪选中状态
+    in-out property <int> selected-subcategory: -1;  // 选中的子分类索引 (0,1,2)
+    in-out property <int> selected-subcategory-image: -1;  // 选中的子分类内图片索引
+
+    // 计算总高度
+    height: expanded ? (28px + (has-subcategories ? 3 * 28px + (subcategory-expanded[0] ? subcategory-1-images.length * 24px : 0px) + (subcategory-expanded[1] ? subcategory-2-images.length * 24px : 0px) + (subcategory-expanded[2] ? subcategory-3-images.length * 24px : 0px) : images.length * 24px)) : 28px;
+    background: is-selected ? #e3f2fd : #fafafa;
+    border-radius: 4px;
+
+    VerticalLayout {
+        padding: 0;
+        spacing: 0;
+
+        // 分类标题
+        Rectangle {
+            height: 28px;
+            background: header-touch.has-hover ? #f0f0f0 : transparent;
+            border-radius: 4px;
+
+            header-touch := TouchArea {
+                clicked => { root.toggle-clicked(); }
+            }
+
+            HorizontalLayout {
+                padding-left: 6px;
+                padding-right: 6px;
+                spacing: 4px;
+
+                Text {
+                    text: expanded ? "▼" : "▶";
+                    font-size: 10px;
+                    color: #666;
+                    vertical-alignment: center;
+                    width: 12px;
+                }
+
+                Text {
+                    text: display-name;
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: #333;
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: "(" + image-count + ")";
+                    font-size: 10px;
+                    color: #999;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        // 子分类列表（展开时显示，且有子分类）
+        if expanded && has-subcategories: VerticalLayout {
+            padding-left: 16px;
+            padding-right: 6px;
+            padding-bottom: 4px;
+            spacing: 2px;
+            
+            // 子分类1
+            Rectangle {
+                height: 28px;
+                background: sub1-touch.has-hover ? #f0f0f0 : transparent;
+                border-radius: 3px;
+                
+                sub1-touch := TouchArea {
+                    clicked => { root.subcategory-clicked(0); }
+                }
+                
+                HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    spacing: 4px;
+                    
+                    Text {
+                        text: subcategory-expanded[0] ? "▼" : "▶";
+                        font-size: 10px;
+                        color: #666;
+                        vertical-alignment: center;
+                        width: 12px;
+                    }
+                    
+                    Text {
+                        text: subcategory-names[0];
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: #333;
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+                    
+                    Text {
+                        text: "(" + subcategory-counts[0] + ")";
+                        font-size: 10px;
+                        color: #999;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            
+            // 子分类1的图片列表
+            if subcategory-expanded[0] && subcategory-1-images.length > 0: VerticalLayout {
+                padding-left: 20px;
+                padding-right: 4px;
+                spacing: 2px;
+                
+                for image[j] in subcategory-1-images: Rectangle {
+                    height: 22px;
+                    background: (selected-subcategory == 0 && selected-subcategory-image == j) ? #bbdefb : image-touch1.has-hover ? #e8e8e8 : transparent;
+                    border-radius: 2px;
+                    
+                    image-touch1 := TouchArea {
+                        clicked => { root.subcategory-image-clicked(0, j); }
+                    }
+                    
+                    Text {
+                        text: image;
+                        font-size: 11px;
+                        color: (selected-subcategory == 0 && selected-subcategory-image == j) ? #1976D2 : #555;
+                        font-weight: (selected-subcategory == 0 && selected-subcategory-image == j) ? 600 : 400;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+            
+            // 子分类2
+            Rectangle {
+                height: 28px;
+                background: sub2-touch.has-hover ? #f0f0f0 : transparent;
+                border-radius: 3px;
+                
+                sub2-touch := TouchArea {
+                    clicked => { root.subcategory-clicked(1); }
+                }
+                
+                HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    spacing: 4px;
+                    
+                    Text {
+                        text: subcategory-expanded[1] ? "▼" : "▶";
+                        font-size: 10px;
+                        color: #666;
+                        vertical-alignment: center;
+                        width: 12px;
+                    }
+                    
+                    Text {
+                        text: subcategory-names[1];
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: #333;
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+                    
+                    Text {
+                        text: "(" + subcategory-counts[1] + ")";
+                        font-size: 10px;
+                        color: #999;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            
+            // 子分类2的图片列表
+            if subcategory-expanded[1] && subcategory-2-images.length > 0: VerticalLayout {
+                padding-left: 20px;
+                padding-right: 4px;
+                spacing: 2px;
+                
+                for image[j] in subcategory-2-images: Rectangle {
+                    height: 22px;
+                    background: (selected-subcategory == 1 && selected-subcategory-image == j) ? #bbdefb : image-touch2.has-hover ? #e8e8e8 : transparent;
+                    border-radius: 2px;
+                    
+                    image-touch2 := TouchArea {
+                        clicked => { root.subcategory-image-clicked(1, j); }
+                    }
+                    
+                    Text {
+                        text: image;
+                        font-size: 11px;
+                        color: (selected-subcategory == 1 && selected-subcategory-image == j) ? #1976D2 : #555;
+                        font-weight: (selected-subcategory == 1 && selected-subcategory-image == j) ? 600 : 400;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+            
+            // 子分类3
+            Rectangle {
+                height: 28px;
+                background: sub3-touch.has-hover ? #f0f0f0 : transparent;
+                border-radius: 3px;
+                
+                sub3-touch := TouchArea {
+                    clicked => { root.subcategory-clicked(2); }
+                }
+                
+                HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    spacing: 4px;
+                    
+                    Text {
+                        text: subcategory-expanded[2] ? "▼" : "▶";
+                        font-size: 10px;
+                        color: #666;
+                        vertical-alignment: center;
+                        width: 12px;
+                    }
+                    
+                    Text {
+                        text: subcategory-names[2];
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: #333;
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+                    
+                    Text {
+                        text: "(" + subcategory-counts[2] + ")";
+                        font-size: 10px;
+                        color: #999;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            
+            // 子分类3的图片列表
+            if subcategory-expanded[2] && subcategory-3-images.length > 0: VerticalLayout {
+                padding-left: 20px;
+                padding-right: 4px;
+                spacing: 2px;
+                
+                for image[j] in subcategory-3-images: Rectangle {
+                    height: 22px;
+                    background: (selected-subcategory == 2 && selected-subcategory-image == j) ? #bbdefb : image-touch3.has-hover ? #e8e8e8 : transparent;
+                    border-radius: 2px;
+                    
+                    image-touch3 := TouchArea {
+                        clicked => { root.subcategory-image-clicked(2, j); }
+                    }
+                    
+                    Text {
+                        text: image;
+                        font-size: 11px;
+                        color: (selected-subcategory == 2 && selected-subcategory-image == j) ? #1976D2 : #555;
+                        font-weight: (selected-subcategory == 2 && selected-subcategory-image == j) ? 600 : 400;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+        
+        // 普通分类的图片列表（展开时显示，且images不为空）
+        if expanded && !has-subcategories && images.length > 0: VerticalLayout {
+            padding-left: 20px;
+            padding-right: 6px;
+            padding-bottom: 4px;
+            spacing: 0px;
+
+            for image[i] in images: Rectangle {
+                height: 24px;
+                background: i == selected-image-index ? #bbdefb : image-touch.has-hover ? #e8e8e8 : transparent;
+                border-radius: 3px;
+                border-width: i == selected-image-index ? 1px : 0px;
+                border-color: i == selected-image-index ? #1976D2 : transparent;
+
+                image-touch := TouchArea {
+                    clicked => { root.image-clicked(i); }
+                }
+
+                Text {
+                    text: image;
+                    font-size: 11px;
+                    color: i == selected-image-index ? #1976D2 : #555;
+                    font-weight: i == selected-image-index ? 600 : 400;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+}
+
+// 图片标价页面
+export component PricingPage inherits Rectangle {
+    in-out property <int> plan-id: 0;
+
+    callback select-folder();
+
+    // 2秒后自动清除状态消息（单次触发）
+    Timer {
+        interval: 2s;
+        running: PricingPageAdapter.status-message != "";
+        triggered => {
+            PricingPageAdapter.clear-status();
+        }
+    }
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 8px;
+
+        // 标题行：标题 + 状态消息
+        HorizontalLayout {
+            spacing: 12px;
+            height: 28px;
+
+            Text {
+                text: "图片标价";
+                font-size: 18px;
+                font-weight: 700;
+                color: #1976D2;
+                vertical-alignment: center;
+            }
+
+            // 状态消息（与标题平行）
+            if PricingPageAdapter.status-message != "": Rectangle {
+                horizontal-stretch: 1;
+                background: PricingPageAdapter.status-message == "标价成功" ? #e8f5e9 : #ffebee;
+                border-radius: 4px;
+
+                Text {
+                    text: PricingPageAdapter.status-message;
+                    color: PricingPageAdapter.status-message == "标价成功" ? #2e7d32 : #c62828;
+                    font-size: 13px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+            height: 40px;
+
+            Button {
+                text: "选择文件夹";
+                width: 100px;
+                clicked => {
+                    root.select-folder();
+                }
+            }
+
+            Button {
+                text: "上一张";
+                width: 70px;
+                clicked => { PricingPageAdapter.prev-image(); }
+            }
+
+            Button {
+                text: "下一张";
+                width: 70px;
+                clicked => { PricingPageAdapter.next-image(); }
+            }
+
+            // 当前计划 + 进度
+            Rectangle {
+                horizontal-stretch: 1;
+                background: #f5f5f5;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: #e0e0e0;
+                Text {
+                    text: PricingPageAdapter.plan-name != "" ? "计划: " + PricingPageAdapter.plan-name + "  已处理: " + PricingPageAdapter.processed-count + "/" + PricingPageAdapter.total-count : "未选择计划";
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    color: #1976D2;
+                    font-size: 12px;
+                    font-weight: 600;
+                }
+            }
+
+            // 当前图片种类显示
+            Rectangle {
+                width: 100px;
+                background: PricingPageAdapter.project-type != "" ? #e3f2fd : #f5f5f5;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: PricingPageAdapter.project-type != "" ? #1976D2 : #e0e0e0;
+
+                Text {
+                    text: PricingPageAdapter.project-type == "blood" ? "血型" : PricingPageAdapter.project-type == "antibody" ? "抗筛" : PricingPageAdapter.project-type == "crossmatch" ? "交叉配血" : "未选择种类";
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    color: PricingPageAdapter.project-type != "" ? #1976D2 : #999;
+                    font-size: 12px;
+                }
+            }
+
+            // 全部完成提示
+            if PricingPageAdapter.total-count > 0 && PricingPageAdapter.processed-count >= PricingPageAdapter.total-count: Rectangle {
+                width: 100px;
+                background: #e8f5e9;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: #2e7d32;
+                Text {
+                    text: "全部完成";
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    color: #2e7d32;
+                    font-size: 12px;
+                    font-weight: 600;
+                }
+            }
+        }
+
+        // 图片显示区域 + 分类列表
+        Rectangle {
+            vertical-stretch: 1;
+            background: #f0f0f0;
+            border-radius: 4px;
+            clip: true;
+
+            HorizontalLayout {
+                spacing: 12px;
+
+                // 图片显示区域 (90%)
+                Rectangle {
+                    horizontal-stretch: 9;
+                    vertical-stretch: 1;
+                    background: transparent;
+
+                    if PricingPageAdapter.current-image-path == "": Text {
+                        text: "图片显示区域";
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        color: #999;
+                    }
+                    
+                    if PricingPageAdapter.current-image-path != "": Image {
+                        source: PricingPageAdapter.current-image;
+                        image-fit: contain;
+                        width: 100%;
+                        height: 100%;
+                    }
+                }
+
+                // 分类列表面板 (10%)
+                Rectangle {
+                    horizontal-stretch: 1;
+                    vertical-stretch: 1;
+                    min-width: 140px;
+                    background: #fafafa;
+                    border-width: 1px;
+                    border-color: #e0e0e0;
+                    border-radius: 4px;
+
+                    VerticalLayout {
+                        padding: 4px;
+                        spacing: 2px;
+
+                        Text {
+                            text: "图片分类";
+                            font-size: 11px;
+                            font-weight: 600;
+                            color: #666;
+                            height: 18px;
+                        }
+
+                        if ManagePageAdapter.categories.length == 0: Text {
+                            text: "暂无数据";
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            color: #999;
+                            font-size: 11px;
+                        }
+
+                        if ManagePageAdapter.categories.length > 0: ScrollView {
+                            VerticalLayout {
+                                spacing: 2px;
+                                alignment: start;
+
+                                for category[i] in ManagePageAdapter.categories: PricingCategoryItem {
+                                    category-name: category.name;
+                                    display-name: category.display-name;
+                                    image-count: category.count;
+                                    expanded: category.expanded;
+                                    images: category.images;
+                                    is-selected: ManagePageAdapter.selected-category == i;
+                                    selected-image-index: ManagePageAdapter.current-category-index == i ? ManagePageAdapter.current-image-index : -1;
+                                    
+                                    // 子分类属性
+                                    has-subcategories: category.has-subcategories;
+                                    subcategory-names: category.subcategory-names;
+                                    subcategory-counts: category.subcategory-counts;
+                                    subcategory-expanded: category.subcategory-expanded;
+                                    subcategory-1-images: category.subcategory-1-images;
+                                    subcategory-2-images: category.subcategory-2-images;
+                                    subcategory-3-images: category.subcategory-3-images;
+                                    
+                                    // 子分类选中状态
+                                    selected-subcategory: ManagePageAdapter.current-category-index == i ? ManagePageAdapter.selected-subcategory : -1;
+                                    selected-subcategory-image: ManagePageAdapter.current-category-index == i ? ManagePageAdapter.selected-subcategory-image : -1;
+
+                                    toggle-clicked => {
+                                        ManagePageAdapter.toggle-category(i);
+                                    }
+
+                                    image-clicked(idx) => {
+                                        ManagePageAdapter.select-category(i);
+                                        ManagePageAdapter.select-image(idx);
+                                    }
+                                    
+                                    subcategory-clicked(idx) => {
+                                        ManagePageAdapter.toggle-subcategory(i, idx);
+                                    }
+                                    
+                                    subcategory-image-clicked(sub_idx, img_idx) => {
+                                        ManagePageAdapter.subcategory-image-clicked(i, sub_idx, img_idx);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 8个价位显示槽位 + 删除按钮
+        HorizontalLayout {
+            spacing: 4px;
+            height: 30px;
+
+            // 槽位1
+            Rectangle { border-width: 1px; border-color: PricingPageAdapter.current-slot == 0 ? #1976D2 : #bdbdbd; border-radius: 4px; background: PricingPageAdapter.current-slot == 0 ? #e3f2fd : white; width: 50px; height: 30px;
+                TouchArea { clicked => { PricingPageAdapter.focus-slot(0); } }
+                Text { text: PricingPageAdapter.slot1; horizontal-alignment: center; vertical-alignment: center; }
+            }
+            // 槽位2
+            Rectangle { border-width: 1px; border-color: PricingPageAdapter.current-slot == 1 ? #1976D2 : #bdbdbd; border-radius: 4px; background: PricingPageAdapter.current-slot == 1 ? #e3f2fd : white; width: 50px; height: 30px;
+                TouchArea { clicked => { PricingPageAdapter.focus-slot(1); } }
+                Text { text: PricingPageAdapter.slot2; horizontal-alignment: center; vertical-alignment: center; }
+            }
+            // 槽位3
+            Rectangle { border-width: 1px; border-color: PricingPageAdapter.current-slot == 2 ? #1976D2 : #bdbdbd; border-radius: 4px; background: PricingPageAdapter.current-slot == 2 ? #e3f2fd : white; width: 50px; height: 30px;
+                TouchArea { clicked => { PricingPageAdapter.focus-slot(2); } }
+                Text { text: PricingPageAdapter.slot3; horizontal-alignment: center; vertical-alignment: center; }
+            }
+            // 槽位4
+            Rectangle { border-width: 1px; border-color: PricingPageAdapter.current-slot == 3 ? #1976D2 : #bdbdbd; border-radius: 4px; background: PricingPageAdapter.current-slot == 3 ? #e3f2fd : white; width: 50px; height: 30px;
+                TouchArea { clicked => { PricingPageAdapter.focus-slot(3); } }
+                Text { text: PricingPageAdapter.slot4; horizontal-alignment: center; vertical-alignment: center; }
+            }
+            // 槽位5
+            Rectangle { border-width: 1px; border-color: PricingPageAdapter.current-slot == 4 ? #1976D2 : #bdbdbd; border-radius: 4px; background: PricingPageAdapter.current-slot == 4 ? #e3f2fd : white; width: 50px; height: 30px;
+                TouchArea { clicked => { PricingPageAdapter.focus-slot(4); } }
+                Text { text: PricingPageAdapter.slot5; horizontal-alignment: center; vertical-alignment: center; }
+            }
+            // 槽位6
+            Rectangle { border-width: 1px; border-color: PricingPageAdapter.current-slot == 5 ? #1976D2 : #bdbdbd; border-radius: 4px; background: PricingPageAdapter.current-slot == 5 ? #e3f2fd : white; width: 50px; height: 30px;
+                TouchArea { clicked => { PricingPageAdapter.focus-slot(5); } }
+                Text { text: PricingPageAdapter.slot6; horizontal-alignment: center; vertical-alignment: center; }
+            }
+            // 槽位7
+            Rectangle { border-width: 1px; border-color: PricingPageAdapter.current-slot == 6 ? #1976D2 : #bdbdbd; border-radius: 4px; background: PricingPageAdapter.current-slot == 6 ? #e3f2fd : white; width: 50px; height: 30px;
+                TouchArea { clicked => { PricingPageAdapter.focus-slot(6); } }
+                Text { text: PricingPageAdapter.slot7; horizontal-alignment: center; vertical-alignment: center; }
+            }
+            // 槽位8
+            Rectangle { border-width: 1px; border-color: PricingPageAdapter.current-slot == 7 ? #1976D2 : #bdbdbd; border-radius: 4px; background: PricingPageAdapter.current-slot == 7 ? #e3f2fd : white; width: 50px; height: 30px;
+                TouchArea { clicked => { PricingPageAdapter.focus-slot(7); } }
+                Text { text: PricingPageAdapter.slot8; horizontal-alignment: center; vertical-alignment: center; }
+            }
+            
+            Rectangle { width: 8px; background: transparent; }
+            
+            // 删除按钮
+            Rectangle {
+                width: 50px;
+                height: 30px;
+                background: del-touch.has-hover ? #ffcdd2 : #ef5350;
+                border-radius: 4px;
+                
+                del-touch := TouchArea {
+                    clicked => { PricingPageAdapter.delete-slot(PricingPageAdapter.current-slot); }
+                }
+                
+                Text {
+                    text: "←";
+                    color: white;
+                    font-size: 16px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        // 种类按钮
+        HorizontalLayout {
+            spacing: 4px;
+            height: 30px;
+
+            blood-btn := Rectangle { width: 50px; height: 30px; border-radius: 4px; border-width: 1px; border-color: PricingPageAdapter.project-type == "blood" ? #1976D2 : blood-touch.has-hover ? #90caf9 : #bdbdbd; background: PricingPageAdapter.project-type == "blood" ? #e3f2fd : blood-touch.has-hover ? #f5f5f5 : white;
+                blood-touch := TouchArea { clicked => { 
+                    // 检查当前输入是否允许选择血型（需要8位输入）
+                    let has1 = PricingPageAdapter.slot1 != "";
+                    let has2 = PricingPageAdapter.slot2 != "";
+                    let has3 = PricingPageAdapter.slot3 != "";
+                    let has4 = PricingPageAdapter.slot4 != "";
+                    let has5 = PricingPageAdapter.slot5 != "";
+                    let has6 = PricingPageAdapter.slot6 != "";
+                    let has7 = PricingPageAdapter.slot7 != "";
+                    let has8 = PricingPageAdapter.slot8 != "";
+                    if has1 && has2 && has3 && has4 && has5 && has6 && has7 && has8 {
+                        PricingPageAdapter.set-project-type("blood");
+                    } else if !has1 && !has2 && !has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+                        PricingPageAdapter.set-project-type("blood");
+                    } else {
+                        PricingPageAdapter.status-message = "血型需要8位输入";
+                    }
+                } }
+                Text { text: "血型"; horizontal-alignment: center; vertical-alignment: center; color: PricingPageAdapter.project-type == "blood" ? #1976D2 : #333; }
+            }
+            antibody-btn := Rectangle { width: 50px; height: 30px; border-radius: 4px; border-width: 1px; border-color: PricingPageAdapter.project-type == "antibody" ? #1976D2 : antibody-touch.has-hover ? #90caf9 : #bdbdbd; background: PricingPageAdapter.project-type == "antibody" ? #e3f2fd : antibody-touch.has-hover ? #f5f5f5 : white;
+                antibody-touch := TouchArea { clicked => { 
+                    // 检查当前输入是否允许选择抗筛（需要2位输入）
+                    let has1 = PricingPageAdapter.slot1 != "";
+                    let has2 = PricingPageAdapter.slot2 != "";
+                    let has3 = PricingPageAdapter.slot3 != "";
+                    let has4 = PricingPageAdapter.slot4 != "";
+                    let has5 = PricingPageAdapter.slot5 != "";
+                    let has6 = PricingPageAdapter.slot6 != "";
+                    let has7 = PricingPageAdapter.slot7 != "";
+                    let has8 = PricingPageAdapter.slot8 != "";
+                    if has1 && has2 && !has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+                        PricingPageAdapter.set-project-type("antibody");
+                    } else if !has1 && !has2 && !has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+                        PricingPageAdapter.set-project-type("antibody");
+                    } else {
+                        PricingPageAdapter.status-message = "抗筛需要2位输入";
+                    }
+                } }
+                Text { text: "抗筛"; horizontal-alignment: center; vertical-alignment: center; color: PricingPageAdapter.project-type == "antibody" ? #1976D2 : #333; }
+            }
+            crossmatch-btn := Rectangle { width: 70px; height: 30px; border-radius: 4px; border-width: 1px; border-color: PricingPageAdapter.project-type == "crossmatch" ? #1976D2 : crossmatch-touch.has-hover ? #90caf9 : #bdbdbd; background: PricingPageAdapter.project-type == "crossmatch" ? #e3f2fd : crossmatch-touch.has-hover ? #f5f5f5 : white;
+                crossmatch-touch := TouchArea { clicked => { 
+                    // 检查当前输入是否允许选择交叉配血（需要3位输入）
+                    let has1 = PricingPageAdapter.slot1 != "";
+                    let has2 = PricingPageAdapter.slot2 != "";
+                    let has3 = PricingPageAdapter.slot3 != "";
+                    let has4 = PricingPageAdapter.slot4 != "";
+                    let has5 = PricingPageAdapter.slot5 != "";
+                    let has6 = PricingPageAdapter.slot6 != "";
+                    let has7 = PricingPageAdapter.slot7 != "";
+                    let has8 = PricingPageAdapter.slot8 != "";
+                    if has1 && has2 && has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+                        PricingPageAdapter.set-project-type("crossmatch");
+                    } else if !has1 && !has2 && !has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+                        PricingPageAdapter.set-project-type("crossmatch");
+                    } else {
+                        PricingPageAdapter.status-message = "交叉配血需要3位输入";
+                    }
+                } }
+                Text { text: "交叉配血"; horizontal-alignment: center; vertical-alignment: center; color: PricingPageAdapter.project-type == "crossmatch" ? #1976D2 : #333; }
+            }
+        }
+        
+        // 价位按钮
+        HorizontalLayout {
+            spacing: 4px;
+            height: 30px;
+            
+            Button { text: "4+"; width: 50px; clicked => { PricingPageAdapter.input-code("4+"); } }
+            Button { text: "3+"; width: 50px; clicked => { PricingPageAdapter.input-code("3+"); } }
+            Button { text: "2+"; width: 50px; clicked => { PricingPageAdapter.input-code("2+"); } }
+            Button { text: "+"; width: 50px; clicked => { PricingPageAdapter.input-code("+"); } }
+            Button { text: "-"; width: 50px; clicked => { PricingPageAdapter.input-code("-"); } }
+            Button { text: "?"; width: 50px; clicked => { PricingPageAdapter.input-code("?"); } }
+            Button { text: "M"; width: 50px; clicked => { PricingPageAdapter.input-code("M"); } }
+        }
+        
+        HorizontalLayout {
+            spacing: 8px;
+            height: 30px;
+
+            Button {
+                text: "确认标价";
+                width: 80px;
+                clicked => {
+                    let price = PricingPageAdapter.slot1 + PricingPageAdapter.slot2 + PricingPageAdapter.slot3 + PricingPageAdapter.slot4 + PricingPageAdapter.slot5 + PricingPageAdapter.slot6 + PricingPageAdapter.slot7 + PricingPageAdapter.slot8;
+                    if price != "" && PricingPageAdapter.current-image-path != "" && PricingPageAdapter.project-type != "" {
+                        // 验证输入组合
+                        let combo-error = PricingPageAdapter.validate-input-combo();
+                        if combo-error != "" {
+                            PricingPageAdapter.status-message = combo-error;
+                        } else {
+                            // 验证种类与输入匹配
+                            let type-error = PricingPageAdapter.validate-type-combo();
+                            if type-error != "" {
+                                PricingPageAdapter.status-message = type-error;
+                            } else {
+                                PricingPageAdapter.confirm-pricing(PricingPageAdapter.plan-id, PricingPageAdapter.current-image-path, PricingPageAdapter.current-image-path, price, PricingPageAdapter.project-type);
+                            }
+                        }
+                    }
+                }
+            }
+
+            Button {
+                text: "上一张";
+                width: 70px;
+                clicked => { PricingPageAdapter.prev-image(); }
+            }
+
+            Button {
+                text: "下一张";
+                width: 70px;
+                clicked => { PricingPageAdapter.next-image(); }
+            }
+
+            Button {
+                text: "跳过";
+                width: 60px;
+                clicked => {
+                    if PricingPageAdapter.current-image-path != "" {
+                        PricingPageAdapter.skip-image(PricingPageAdapter.plan-id, PricingPageAdapter.current-image-path);
+                    }
+                }
+            }
+
+            Rectangle { horizontal-stretch: 1; background: transparent; }
+
+            Button {
+                text: "清除所有已标价";
+                width: 100px;
+                clicked => {
+                    if PricingPageAdapter.plan-id > 0 {
+                        PricingPageAdapter.clear-all-priced(PricingPageAdapter.plan-id);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// 图片管理页面
+export component ManagePage inherits Rectangle {
+    in-out property <int> plan-id: 0;
+    in-out property <string> plan-name: "";
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 8px;
+
+        Text {
+            text: "图片管理";
+            font-size: 18px;
+            font-weight: 700;
+            color: #1976D2;
+            height: 28px;
+        }
+
+        // 价位槽 + 项目类型（仅已标价图片显示）
+        HorizontalLayout {
+            spacing: 4px;
+            height: 30px;
+
+            // 8个价位槽
+            Rectangle { border-width: 1px; border-color: #bdbdbd; border-radius: 4px; background: white; width: 50px; height: 30px;
+                Text { text: ManagePageAdapter.slot1; horizontal-alignment: center; vertical-alignment: center; color: #333; font-size: 11px; }
+            }
+            Rectangle { border-width: 1px; border-color: #bdbdbd; border-radius: 4px; background: white; width: 50px; height: 30px;
+                Text { text: ManagePageAdapter.slot2; horizontal-alignment: center; vertical-alignment: center; color: #333; font-size: 11px; }
+            }
+            Rectangle { border-width: 1px; border-color: #bdbdbd; border-radius: 4px; background: white; width: 50px; height: 30px;
+                Text { text: ManagePageAdapter.slot3; horizontal-alignment: center; vertical-alignment: center; color: #333; font-size: 11px; }
+            }
+            Rectangle { border-width: 1px; border-color: #bdbdbd; border-radius: 4px; background: white; width: 50px; height: 30px;
+                Text { text: ManagePageAdapter.slot4; horizontal-alignment: center; vertical-alignment: center; color: #333; font-size: 11px; }
+            }
+            Rectangle { border-width: 1px; border-color: #bdbdbd; border-radius: 4px; background: white; width: 50px; height: 30px;
+                Text { text: ManagePageAdapter.slot5; horizontal-alignment: center; vertical-alignment: center; color: #333; font-size: 11px; }
+            }
+            Rectangle { border-width: 1px; border-color: #bdbdbd; border-radius: 4px; background: white; width: 50px; height: 30px;
+                Text { text: ManagePageAdapter.slot6; horizontal-alignment: center; vertical-alignment: center; color: #333; font-size: 11px; }
+            }
+            Rectangle { border-width: 1px; border-color: #bdbdbd; border-radius: 4px; background: white; width: 50px; height: 30px;
+                Text { text: ManagePageAdapter.slot7; horizontal-alignment: center; vertical-alignment: center; color: #333; font-size: 11px; }
+            }
+            Rectangle { border-width: 1px; border-color: #bdbdbd; border-radius: 4px; background: white; width: 50px; height: 30px;
+                Text { text: ManagePageAdapter.slot8; horizontal-alignment: center; vertical-alignment: center; color: #333; font-size: 11px; }
+            }
+
+            Rectangle { width: 8px; background: transparent; }
+
+            // 项目类型显示
+            Rectangle {
+                width: 100px;
+                height: 30px;
+                background: ManagePageAdapter.project-type-display != "" ? #e3f2fd : #f5f5f5;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: ManagePageAdapter.project-type-display != "" ? #1976D2 : #e0e0e0;
+                Text {
+                    text: ManagePageAdapter.project-type-display != "" ? ManagePageAdapter.project-type-display : "未标价";
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    color: ManagePageAdapter.project-type-display != "" ? #1976D2 : #999;
+                    font-size: 12px;
+                }
+            }
+        }
+
+        // 图片显示区域 + 图片文件集合
+        Rectangle {
+            vertical-stretch: 1;
+            background: #f0f0f0;
+            border-radius: 4px;
+            clip: true;
+
+            HorizontalLayout {
+                spacing: 12px;
+
+                // 图片显示区域 (70%)
+                Rectangle {
+                    horizontal-stretch: 7;
+                    background: white;
+                    border-radius: 4px;
+                    border-width: 1px;
+                    border-color: #e0e0e0;
+
+                    VerticalLayout {
+                        padding: 8px;
+                        spacing: 4px;
+
+                        Text {
+                            text: ManagePageAdapter.selected-image-path != "" ? "当前图片: " + ManagePageAdapter.selected-image-path : "图片显示区域";
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: #666;
+                            height: 20px;
+                        }
+
+                        Rectangle {
+                            vertical-stretch: 1;
+                            background: #fafafa;
+                            border-radius: 4px;
+
+                            if ManagePageAdapter.selected-image-path == "": Text {
+                                text: "点击右侧图片名查看";
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                color: #999;
+                            }
+
+                            if ManagePageAdapter.selected-image-path != "": Image {
+                                source: ManagePageAdapter.selected-image-data;
+                                image-fit: contain;
+                                width: 100%;
+                                height: 100%;
+                            }
+                        }
+                    }
+                }
+
+                // 图片文件集合面板 (30%)
+                Rectangle {
+                    horizontal-stretch: 3;
+                    background: white;
+                    border-radius: 4px;
+                    border-width: 1px;
+                    border-color: #e0e0e0;
+
+                    VerticalLayout {
+                        padding: 8px;
+                        spacing: 4px;
+
+                        Text {
+                            text: "图片文件集合";
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: #666;
+                            height: 20px;
+                        }
+
+                        Rectangle {
+                            vertical-stretch: 1;
+                            background: #fafafa;
+                            border-radius: 4px;
+                            clip: true;
+
+                            if ManagePageAdapter.categories.length == 0: Text {
+                                text: "暂无数据";
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                color: #999;
+                            }
+
+                            if ManagePageAdapter.categories.length > 0: VerticalLayout {
+                                for category[i] in ManagePageAdapter.categories: ImageCategoryItem {
+                                    category-name: category.name;
+                                    display-name: category.display-name;
+                                    image-count: category.count;
+                                    expanded: category.expanded;
+                                    images: category.images;
+                                    is-selected: ManagePageAdapter.selected-category == i;
+                                    selected-image-index: ManagePageAdapter.current-category-index == i ? ManagePageAdapter.current-image-index : -1;
+                                    
+                                    // 子分类属性
+                                    has-subcategories: category.has-subcategories;
+                                    subcategory-names: category.subcategory-names;
+                                    subcategory-counts: category.subcategory-counts;
+                                    subcategory-expanded: category.subcategory-expanded;
+                                    subcategory-1-images: category.subcategory-1-images;
+                                    subcategory-2-images: category.subcategory-2-images;
+                                    subcategory-3-images: category.subcategory-3-images;
+                                    
+                                    // 子分类选中状态
+                                    selected-subcategory: ManagePageAdapter.current-category-index == i ? ManagePageAdapter.selected-subcategory : -1;
+                                    selected-subcategory-image: ManagePageAdapter.current-category-index == i ? ManagePageAdapter.selected-subcategory-image : -1;
+
+                                    toggle-clicked => {
+                                        ManagePageAdapter.toggle-category(i);
+                                    }
+
+                                    image-clicked(idx) => {
+                                        ManagePageAdapter.select-category(i);
+                                        ManagePageAdapter.select-image(idx);
+                                    }
+                                    
+                                    subcategory-clicked(idx) => {
+                                        ManagePageAdapter.toggle-subcategory(i, idx);
+                                    }
+                                    
+                                    subcategory-image-clicked(sub_idx, img_idx) => {
+                                        ManagePageAdapter.subcategory-image-clicked(i, sub_idx, img_idx);
+                                    }
+                                    
+                                    image-right-clicked(cat_idx, img_idx, img_name) => {
+                                        ManagePageAdapter.show-context-menu-at(0, 0, i, img_idx, img_name);
+                                    }
+                                    
+                                    subcategory-image-right-clicked(cat_idx, sub_idx, img_idx, img_name) => {
+                                        ManagePageAdapter.show-context-menu-at(0, 0, i, img_idx, img_name);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Excel配对页面
+export component ExcelPage inherits Rectangle {
+    in-out property <int> plan-id: 0;
+
+    VerticalLayout {
+        padding: 8px;
+        spacing: 8px;
+
+        // 标题栏
+        HorizontalLayout {
+            height: 36px;
+            spacing: 12px;
+
+            Text {
+                text: "Excel配对";
+                font-size: 18px;
+                font-weight: 700;
+                color: #1976D2;
+                vertical-alignment: center;
+            }
+
+            Rectangle { horizontal-stretch: 1; }
+
+            Button {
+                text: "导入Excel";
+                width: 80px;
+                clicked => {
+                    ExcelPageAdapter.import-excel();
+                }
+            }
+
+            Button {
+                text: "导出结果";
+                width: 80px;
+                clicked => {
+                    ExcelPageAdapter.export-result();
+                }
+            }
+        }
+
+        // Card切换栏
+        HorizontalLayout {
+            height: 40px;
+            spacing: 4px;
+
+            // 血型card
+            Rectangle {
+                horizontal-stretch: 1;
+                background: ExcelPageAdapter.active-card == 0 ? #1976D2 : #f5f5f5;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: ExcelPageAdapter.active-card == 0 ? #1976D2 : #e0e0e0;
+
+                Text {
+                    text: "血型";
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: ExcelPageAdapter.active-card == 0 ? white : #666;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                TouchArea {
+                    clicked => {
+                        ExcelPageAdapter.switch-card(0);
+                    }
+                }
+            }
+
+            // 抗筛card
+            Rectangle {
+                horizontal-stretch: 1;
+                background: ExcelPageAdapter.active-card == 1 ? #1976D2 : #f5f5f5;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: ExcelPageAdapter.active-card == 1 ? #1976D2 : #e0e0e0;
+
+                Text {
+                    text: "抗筛";
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: ExcelPageAdapter.active-card == 1 ? white : #666;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                TouchArea {
+                    clicked => {
+                        ExcelPageAdapter.switch-card(1);
+                    }
+                }
+            }
+
+            // 交叉配血card
+            Rectangle {
+                horizontal-stretch: 1;
+                background: ExcelPageAdapter.active-card == 2 ? #1976D2 : #f5f5f5;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: ExcelPageAdapter.active-card == 2 ? #1976D2 : #e0e0e0;
+
+                Text {
+                    text: "交叉配血";
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: ExcelPageAdapter.active-card == 2 ? white : #666;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                TouchArea {
+                    clicked => {
+                        ExcelPageAdapter.switch-card(2);
+                    }
+                }
+            }
+        }
+
+        // 状态消息
+        if ExcelPageAdapter.status-message != "": Rectangle {
+            height: 30px;
+            background: #e8f5e9;
+            border-radius: 4px;
+
+            Text {
+                text: ExcelPageAdapter.status-message;
+                color: #2e7d32;
+                font-size: 12px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        // 数据表格区域
+        Rectangle {
+            vertical-stretch: 1;
+            background: white;
+            border-width: 1px;
+            border-color: #e0e0e0;
+            border-radius: 4px;
+            clip: true;
+
+            if ExcelPageAdapter.current-excel-rows.length == 0: VerticalLayout {
+                alignment: center;
+                spacing: 8px;
+
+                Text {
+                    text: "暂无Excel数据";
+                    font-size: 14px;
+                    color: #999;
+                    horizontal-alignment: center;
+                }
+
+                Text {
+                    text: "请点击 导入Excel 按钮导入数据";
+                    font-size: 12px;
+                    color: #bdbdbd;
+                    horizontal-alignment: center;
+                }
+            }
+
+            if ExcelPageAdapter.current-excel-rows.length > 0: VerticalLayout {
+                padding: 0;
+                spacing: 0;
+
+                // 表头
+                Rectangle {
+                    height: 36px;
+                    background: #1976D2;
+                    border-radius: 4px;
+
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        spacing: 2px;
+
+                        Text { text: "序号"; width: 50px; color: white; font-weight: 600; vertical-alignment: center; font-size: 13px; }
+                        Text { text: "样本编号"; width: 100px; color: white; font-weight: 600; vertical-alignment: center; font-size: 13px; }
+                        Text { text: "孔位结果"; width: 130px; color: white; font-weight: 600; vertical-alignment: center; font-size: 14px; }
+                        Text { text: "考察时间"; width: 130px; color: white; font-weight: 600; vertical-alignment: center; horizontal-alignment: center; font-size: 13px; }
+                        Text { text: "文件路径"; width: 130px; color: white; font-weight: 600; vertical-alignment: center; horizontal-alignment: center; font-size: 13px; }
+                        Text { text: "原始图片"; width: 150px; color: white; font-weight: 600; vertical-alignment: center; font-size: 13px; }
+                        Text { text: "取消绑定"; width: 80px; color: white; font-weight: 600; vertical-alignment: center; font-size: 13px; }
+                    }
+                }
+
+                // 数据行
+                ScrollView {
+                    vertical-stretch: 1;
+
+                    VerticalLayout {
+                        spacing: 1px;
+
+                        for row[i] in ExcelPageAdapter.current-excel-rows: Rectangle {
+                            height: 34px;
+                            background: i == ExcelPageAdapter.selected-row ? #e3f2fd : (mod(i, 2) == 0 ? white : #fafafa);
+                            border-width: 1px;
+                            border-color: #e0e0e0;
+
+                            TouchArea {
+                                clicked => {
+                                    ExcelPageAdapter.select-row(i);
+                                }
+                            }
+
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                padding-right: 8px;
+                                spacing: 2px;
+
+                                // 序号
+                                Text {
+                                    text: row.index;
+                                    width: 50px;
+                                    vertical-alignment: center;
+                                    font-size: 13px;
+                                }
+
+                                // 样本编号（右键复制样本ID）
+                                Rectangle {
+                                    width: 100px;
+                                    background: sample-id-touch.has-hover ? #e3f2fd : transparent;
+                                    border-radius: 3px;
+
+                                    sample-id-touch := TouchArea {
+                                        pointer-event(event) => {
+                                            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                                                ExcelPageAdapter.copy-sample-id(i);
+                                            }
+                                        }
+                                    }
+
+                                    Text {
+                                        text: row.sample-id;
+                                        vertical-alignment: center;
+                                        horizontal-alignment: center;
+                                        font-size: 13px;
+                                        color: #1976D2;
+                                        font-weight: 600;
+                                    }
+                                }
+
+                                // 孔位结果（右键复制孔位结果）
+                                Rectangle {
+                                    width: 130px;
+                                    background: hole-result-touch.has-hover ? #e3f2fd : transparent;
+                                    border-radius: 3px;
+
+                                    hole-result-touch := TouchArea {
+                                        pointer-event(event) => {
+                                            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                                                ExcelPageAdapter.copy-hole-result(i);
+                                            }
+                                        }
+                                    }
+
+                                    Text {
+                                        text: row.hole-result;
+                                        vertical-alignment: center;
+                                        horizontal-alignment: center;
+                                        font-size: 15px;
+                                        color: #333;
+                                        overflow: elide;
+                                    }
+                                }
+
+                                // 考察时间（右键复制考察时间）
+                                Rectangle {
+                                    width: 130px;
+                                    background: test-time-touch.has-hover ? #e3f2fd : transparent;
+                                    border-radius: 3px;
+
+                                    test-time-touch := TouchArea {
+                                        pointer-event(event) => {
+                                            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                                                ExcelPageAdapter.copy-test-time(i);
+                                            }
+                                        }
+                                    }
+
+                                    Text {
+                                        text: row.test-time;
+                                        vertical-alignment: center;
+                                        horizontal-alignment: center;
+                                        font-size: 13px;
+                                    }
+                                }
+
+                                // 文件路径（可点击查看图片）
+                                Rectangle {
+                                    width: 130px;
+                                    height: 30px;
+                                    background: file-path-touch.has-hover ? #e3f2fd : transparent;
+                                    border-radius: 3px;
+
+                                    file-path-touch := TouchArea {
+                                        clicked => {
+                                            if row.file-path != "" {
+                                                ExcelPageAdapter.find-matching-image(i);
+                                            }
+                                        }
+                                    }
+
+                                    Text {
+                                        text: row.file-path != "" ? row.file-path : "未设置";
+                                        font-size: 11px;
+                                        color: row.file-path != "" ? #1976D2 : #999;
+                                        vertical-alignment: center;
+                                        horizontal-alignment: center;
+                                        overflow: elide;
+                                    }
+                                }
+
+                                // 原始图片
+                                Text {
+                                    text: row.matched-image != "" ? row.matched-image : "未匹配";
+                                    width: 150px;
+                                    vertical-alignment: center;
+                                    font-size: 10px;
+                                    color: row.matched-image != "" ? #333 : #999;
+                                    overflow: elide;
+                                }
+
+                                // 取消绑定按钮
+                                Rectangle {
+                                    width: 80px;
+                                    height: 22px;
+                                    background: unbind-touch.has-hover ? #ffcdd2 : #ffebee;
+                                    border-radius: 3px;
+
+                                    unbind-touch := TouchArea {
+                                        clicked => {
+                                            ExcelPageAdapter.unbind-image(i);
+                                        }
+                                    }
+
+                                    Text {
+                                        text: "取消绑定";
+                                        font-size: 10px;
+                                        color: #c62828;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 底部信息栏
+        Rectangle {
+            height: 24px;
+            background: #f5f5f5;
+            border-radius: 4px;
+
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+
+                Text {
+                    text: "共 " + ExcelPageAdapter.current-excel-rows.length + " 条数据";
+                    font-size: 11px;
+                    color: #666;
+                    vertical-alignment: center;
+                }
+
+                Rectangle { horizontal-stretch: 1; }
+
+                if ExcelPageAdapter.selected-row >= 0: Text {
+                    text: "已选择: " + ExcelPageAdapter.current-excel-rows[ExcelPageAdapter.selected-row].sample-id;
+                    font-size: 11px;
+                    color: #1976D2;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}
+
+// 图片预览窗口
+export component ImagePreviewWindow inherits Window {
+    title: "图片预览";
+    background: white;
+    width: 600px;
+    height: 500px;
+
+    // 直接使用属性而不是依赖ExcelPageAdapter
+    in-out property <image> preview-image;
+    in-out property <string> preview-image-name: "";
+    in-out property <string> sample-id: "";
+    in-out property <string> test-time: "";
+    in-out property <int> current-index: 0;
+    in-out property <int> total-count: 0;
+
+    callback close-window();
+    callback confirm-match();
+    callback next-image();
+    callback prev-image();
+
+    VerticalLayout {
+        padding: 8px;
+        spacing: 8px;
+
+        // 标题栏
+        HorizontalLayout {
+            height: 32px;
+            spacing: 8px;
+
+            Text {
+                text: "图片预览: " + preview-image-name;
+                font-size: 14px;
+                font-weight: 600;
+                color: #1976D2;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+
+            Rectangle {
+                width: 80px;
+                height: 28px;
+                background: #e8f5e9;
+                border-radius: 4px;
+
+                Text {
+                    text: "选择匹配";
+                    font-size: 12px;
+                    color: #2e7d32;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                TouchArea {
+                    clicked => {
+                        root.confirm-match();
+                    }
+                }
+            }
+
+            Rectangle {
+                width: 60px;
+                height: 28px;
+                background: #ffebee;
+                border-radius: 4px;
+
+                Text {
+                    text: "关闭";
+                    font-size: 12px;
+                    color: #c62828;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                TouchArea {
+                    clicked => {
+                        root.close-window();
+                    }
+                }
+            }
+        }
+
+        // 图片显示区域（带左右切换按钮）
+        Rectangle {
+            vertical-stretch: 1;
+            background: #f5f5f5;
+            border-radius: 4px;
+
+            HorizontalLayout {
+                vertical-stretch: 1;
+                
+                // 上一张按钮（仅在有多张图片时显示）
+                if total-count > 1: Rectangle {
+                    width: 40px;
+                    height: 60px;
+                    y: parent.height / 2 - 30px;
+                    background: prev-touch.has-hover ? #e0e0e0 : transparent;
+                    border-radius: 4px;
+
+                    prev-touch := TouchArea {
+                        clicked => {
+                            root.prev-image();
+                        }
+                    }
+
+                    Text {
+                        text: "◀";
+                        font-size: 20px;
+                        color: current-index > 0 ? #333 : #ccc;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // 图片显示
+                Rectangle {
+                    horizontal-stretch: 1;
+                    vertical-stretch: 1;
+
+                    Image {
+                        source: preview-image;
+                        image-fit: contain;
+                        width: 100%;
+                        height: 100%;
+                    }
+                }
+
+                // 下一张按钮（仅在有多张图片时显示）
+                if total-count > 1: Rectangle {
+                    width: 40px;
+                    height: 60px;
+                    y: parent.height / 2 - 30px;
+                    background: next-touch.has-hover ? #e0e0e0 : transparent;
+                    border-radius: 4px;
+
+                    next-touch := TouchArea {
+                        clicked => {
+                            root.next-image();
+                        }
+                    }
+
+                    Text {
+                        text: "▶";
+                        font-size: 20px;
+                        color: current-index < total-count - 1 ? #333 : #ccc;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+
+        // 底部信息
+        Rectangle {
+            height: 24px;
+            background: #f5f5f5;
+            border-radius: 4px;
+
+            HorizontalLayout {
+                Text {
+                    text: "样本编号: " + sample-id + " | 考察时间: " + test-time + " | " + (current-index + 1) + "/" + total-count;
+                    font-size: 11px;
+                    color: #666;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}
+
+// 手动匹配窗口
+export component ManualMatchWindow inherits Window {
+    title: "手动匹配图片";
+    background: white;
+    width: 500px;
+    height: 400px;
+
+    // 属性
+    in-out property <string> image-name: "";
+    in-out property <string> sample-id: "";
+    in-out property <string> hole-result: "";
+    in-out property <string> test-time: "";
+    in-out property <string> search-result: "";
+    in-out property <bool> has-search-result: false;
+
+    callback close-window();
+    callback paste-sample-id();
+    callback paste-hole-result();
+    callback paste-test-time();
+    callback search-image();
+    callback confirm-match();
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 12px;
+
+        // 标题
+        Text {
+            text: "手动匹配: " + image-name;
+            font-size: 16px;
+            font-weight: 700;
+            color: #1976D2;
+            height: 28px;
+        }
+
+        // 样本ID
+        HorizontalLayout {
+            spacing: 8px;
+            height: 32px;
+
+            Text {
+                text: "样本ID:";
+                font-size: 13px;
+                color: #333;
+                vertical-alignment: center;
+                width: 80px;
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+                height: 28px;
+                background: white;
+                border-width: 1px;
+                border-color: #bdbdbd;
+                border-radius: 4px;
+
+                Text {
+                    text: sample-id != "" ? sample-id : "右键复制后点击粘贴";
+                    font-size: 12px;
+                    color: sample-id != "" ? #333 : #999;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+            }
+
+            Rectangle {
+                width: 60px;
+                height: 28px;
+                background: #e8f5e9;
+                border-radius: 4px;
+
+                Text {
+                    text: "粘贴";
+                    font-size: 12px;
+                    color: #2e7d32;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                TouchArea {
+                    clicked => { root.paste-sample-id(); }
+                }
+            }
+        }
+
+        // 孔位结果
+        HorizontalLayout {
+            spacing: 8px;
+            height: 32px;
+
+            Text {
+                text: "孔位结果:";
+                font-size: 13px;
+                color: #333;
+                vertical-alignment: center;
+                width: 80px;
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+                height: 28px;
+                background: white;
+                border-width: 1px;
+                border-color: #bdbdbd;
+                border-radius: 4px;
+
+                Text {
+                    text: hole-result != "" ? hole-result : "右键复制后点击粘贴";
+                    font-size: 12px;
+                    color: hole-result != "" ? #333 : #999;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+            }
+
+            Rectangle {
+                width: 60px;
+                height: 28px;
+                background: #e8f5e9;
+                border-radius: 4px;
+
+                Text {
+                    text: "粘贴";
+                    font-size: 12px;
+                    color: #2e7d32;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                TouchArea {
+                    clicked => { root.paste-hole-result(); }
+                }
+            }
+        }
+
+        // 考察时间
+        HorizontalLayout {
+            spacing: 8px;
+            height: 32px;
+
+            Text {
+                text: "考察时间:";
+                font-size: 13px;
+                color: #333;
+                vertical-alignment: center;
+                width: 80px;
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+                height: 28px;
+                background: white;
+                border-width: 1px;
+                border-color: #bdbdbd;
+                border-radius: 4px;
+
+                Text {
+                    text: test-time != "" ? test-time : "右键复制后点击粘贴";
+                    font-size: 12px;
+                    color: test-time != "" ? #333 : #999;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+            }
+
+            Rectangle {
+                width: 60px;
+                height: 28px;
+                background: #e8f5e9;
+                border-radius: 4px;
+
+                Text {
+                    text: "粘贴";
+                    font-size: 12px;
+                    color: #2e7d32;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                TouchArea {
+                    clicked => { root.paste-test-time(); }
+                }
+            }
+        }
+
+        // 搜索按钮
+        Rectangle {
+            height: 36px;
+            background: #1976D2;
+            border-radius: 4px;
+
+            Text {
+                text: "根据孔位结果搜索匹配图片";
+                font-size: 13px;
+                font-weight: 600;
+                color: white;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            TouchArea {
+                clicked => { root.search-image(); }
+            }
+        }
+
+        // 搜索结果
+        if has-search-result: Rectangle {
+            height: 36px;
+            background: #e3f2fd;
+            border-radius: 4px;
+            border-width: 1px;
+            border-color: #1976D2;
+
+            Text {
+                text: "找到匹配图片: " + search-result;
+                font-size: 12px;
+                color: #1976D2;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        Rectangle { vertical-stretch: 1; }
+
+        // 底部按钮
+        HorizontalLayout {
+            spacing: 12px;
+            height: 36px;
+
+            Rectangle {
+                horizontal-stretch: 1;
+                background: #4caf50;
+                border-radius: 4px;
+
+                Text {
+                    text: "确认匹配";
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: white;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                TouchArea {
+                    clicked => { root.confirm-match(); }
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+                background: #f44336;
+                border-radius: 4px;
+
+                Text {
+                    text: "取消";
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: white;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                TouchArea {
+                    clicked => { root.close-window(); }
+                }
+            }
+        }
+    }
+}
+
+// 主应用组件
+export component App inherits Window {
+    title: "图片标价工具";
+    background: white;
+    //preferred-width: 680px;
+    width: 1200px;
+    min-height: 800px;
+
+    // 调试模式：true时禁用计划卡限制
+    in-out property <bool> debug-mode: true;
+
+    // 当前选中的计划ID
+    in-out property <int> current-plan-id: 0;
+    // 当前选中的计划名称
+    in-out property <string> current-plan-name: "";
+    // 当前显示的页面
+    in-out property <string> current-page: "plan";
+    // 侧边栏是否展开
+    in-out property <bool> sidebar-expanded: true;
+
+    // 侧边栏切换回调，用于通知Rust调整窗口大小
+    callback sidebar-toggled(bool);
+    // 选择文件夹回调
+    callback select-folder();
+
+    HorizontalLayout {
+        spacing: 12px;
+
+        // 侧边栏 - 支持展开/收起动画
+        Rectangle {
+            // 展开时120px，收起时48px
+            width: sidebar-expanded ? 120px : 48px;
+            background: #f5f5f5;
+
+            // 宽度变化动画：200ms缓入缓出
+            animate width {
+                duration: 200ms;
+                easing: ease-in-out;
+            }
+
+            VerticalLayout {
+                padding: 8px;
+                spacing: 8px;
+
+                // 侧边栏切换按钮
+                Rectangle {
+                    height: 36px;
+                    background: toggle-touch.has-hover ? #e0e0e0 : transparent;
+                    border-radius: 4px;
+
+                    toggle-touch := TouchArea {
+                        clicked => {
+                            sidebar-expanded = !sidebar-expanded;
+                            root.sidebar-toggled(sidebar-expanded);
+                        }
+                    }
+
+                    Text {
+                        text: sidebar-expanded ? "◀" : "▶";
+                        font-size: 16px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        color: #666;
+                    }
+                }
+
+                // 应用标题
+                Rectangle {
+                    height: 40px;
+                    background: #1976D2;
+                    border-radius: 4px;
+
+                    if sidebar-expanded: Text {
+                        text: "图片标价工具";
+                        color: white;
+                        font-size: 16px;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    if !sidebar-expanded: Text {
+                        text: "📷";
+                        font-size: 20px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // 计划管理按钮
+                Rectangle {
+                    height: 36px;
+                    background: current-page == "plan" ? #e3f2fd : transparent;
+                    border-radius: 4px;
+
+                    TouchArea {
+                        clicked => {
+                            current-page = "plan";
+                        }
+                    }
+
+                    if sidebar-expanded: Text {
+                        text: "📋 添加计划";
+                        color: current-page == "plan" ? #1976D2 : #666;
+                        font-size: 14px;
+                        font-weight: current-page == "plan" ? 700 : 400;
+                        vertical-alignment: center;
+                        x: 12px;
+                    }
+                    if !sidebar-expanded: Text {
+                        text: "📋";
+                        font-size: 18px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        color: current-page == "plan" ? #1976D2 : #666;
+                    }
+                }
+
+                // 分隔线
+                Rectangle {
+                    height: 1px;
+                    background: #e0e0e0;
+                }
+
+                // 子功能标题
+                if sidebar-expanded: Text {
+                    text: "当前计划功能";
+                    font-size: 12px;
+                    color: #999;
+                    height: 20px;
+                }
+
+                // 图片标价按钮
+                Rectangle {
+                    height: 36px;
+                    background: current-page == "pricing" ? #e3f2fd : transparent;
+                    border-radius: 4px;
+                    opacity: (debug-mode || current-plan-id > 0) ? 1.0 : 0.5;
+
+                    TouchArea {
+                        clicked => {
+                            if debug-mode || current-plan-id > 0 {
+                                current-page = "pricing";
+                            }
+                        }
+                    }
+
+                    if sidebar-expanded: Text {
+                        text: "🖼️ 图片标价";
+                        color: current-page == "pricing" ? #1976D2 : #666;
+                        font-size: 14px;
+                        font-weight: current-page == "pricing" ? 700 : 400;
+                        vertical-alignment: center;
+                        x: 12px;
+                    }
+                    if !sidebar-expanded: Text {
+                        text: "🖼️";
+                        font-size: 18px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        color: current-page == "pricing" ? #1976D2 : #666;
+                    }
+                }
+
+                // 图片管理按钮
+                Rectangle {
+                    height: 36px;
+                    background: current-page == "manage" ? #e3f2fd : transparent;
+                    border-radius: 4px;
+                    opacity: (debug-mode || current-plan-id > 0) ? 1.0 : 0.5;
+
+                    TouchArea {
+                        clicked => {
+                            if debug-mode || current-plan-id > 0 {
+                                current-page = "manage";
+                            }
+                        }
+                    }
+
+                    if sidebar-expanded: Text {
+                        text: "📁 图片管理";
+                        color: current-page == "manage" ? #1976D2 : #666;
+                        font-size: 14px;
+                        font-weight: current-page == "manage" ? 700 : 400;
+                        vertical-alignment: center;
+                        x: 12px;
+                    }
+                    if !sidebar-expanded: Text {
+                        text: "📁";
+                        font-size: 18px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        color: current-page == "manage" ? #1976D2 : #666;
+                    }
+                }
+
+                // Excel配对按钮
+                Rectangle {
+                    height: 36px;
+                    background: current-page == "excel" ? #e3f2fd : transparent;
+                    border-radius: 4px;
+                    opacity: (debug-mode || current-plan-id > 0) ? 1.0 : 0.5;
+
+                    TouchArea {
+                        clicked => {
+                            if debug-mode || current-plan-id > 0 {
+                                current-page = "excel";
+                            }
+                        }
+                    }
+
+                    if sidebar-expanded: Text {
+                        text: "📊 Excel配对";
+                        color: current-page == "excel" ? #1976D2 : #666;
+                        font-size: 14px;
+                        font-weight: current-page == "excel" ? 700 : 400;
+                        vertical-alignment: center;
+                        x: 12px;
+                    }
+                    if !sidebar-expanded: Text {
+                        text: "📊";
+                        font-size: 18px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        color: current-page == "excel" ? #1976D2 : #666;
+                    }
+                }
+            }
+        }
+
+        // 主内容区域
+        Rectangle {
+            horizontal-stretch: 1;
+            background: white;
+            clip: true;
+            //硬编码一个个百分比测试的不该这么搞
+            width: 83%;
+            VerticalLayout {
+                padding: 0;
+                alignment: stretch;
+
+                if current-page == "pricing": PricingPage {
+                    plan-id <=> current-plan-id;
+                    select-folder => {
+                        root.select-folder();
+                    }
+                }
+                if current-page == "plan": PlanPage {
+                    plan-id <=> current-plan-id;
+                    plan-name <=> current-plan-name;
+                }
+                if current-page == "manage": ManagePage {
+                    plan-id <=> current-plan-id;
+                    plan-name <=> current-plan-name;
+                }
+                if current-page == "excel": ExcelPage {
+                    plan-id <=> current-plan-id;
+                }
+            }
+        }
+    }
+}
+

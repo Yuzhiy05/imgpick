@@ -1,0 +1,309 @@
+import { PlanData, ImageCategoryData, ExcelRowData } from "structs.slint";
+
+// 计划页面适配器（全局单例）
+export global PlanPageAdapter {
+    in-out property <[PlanData]> plans: [];
+    in-out property <int> plan-columns: 6;
+
+    callback create-plan(string);
+    callback delete-plan(int);
+    callback rename-plan(int, string);
+    callback select-plan(int);
+}
+
+// 图片管理页面适配器（全局单例）
+export global ManagePageAdapter {
+    in-out property <[ImageCategoryData]> categories: [];
+    in-out property <[string]> current-images: [];
+    in-out property <int> selected-category: -1;
+    in-out property <int> selected-image: -1;
+    in-out property <string> selected-image-path: "";
+    in-out property <image> selected-image-data;
+    in-out property <string> plan-name: "";
+    
+    // 已标价图片的价位槽和项目类型
+    in-out property <string> slot1: "";
+    in-out property <string> slot2: "";
+    in-out property <string> slot3: "";
+    in-out property <string> slot4: "";
+    in-out property <string> slot5: "";
+    in-out property <string> slot6: "";
+    in-out property <string> slot7: "";
+    in-out property <string> slot8: "";
+    in-out property <string> project-type-display: "";
+    
+    // 当前选中的图片索引（用于高亮显示）
+    in-out property <int> current-image-index: -1;
+    in-out property <int> current-category-index: -1;
+    
+    // 子分类选中状态（用于高亮显示）
+    in-out property <int> selected-subcategory: -1;  // 选中的子分类索引 (0,1,2)
+    in-out property <int> selected-subcategory-image: -1;  // 选中的子分类内图片索引
+    
+    callback load-categories(int);
+    callback toggle-category(int);
+    callback select-category(int);
+    callback select-image(int);
+    callback toggle-subcategory(int, int);
+    callback subcategory-image-clicked(int, int, int);  // (分类索引, 子分类索引, 图片索引)
+    
+    // 右键菜单相关
+    in-out property <bool> show-context-menu: false;
+    in-out property <int> context-menu-x: 0;
+    in-out property <int> context-menu-y: 0;
+    in-out property <int> context-category-index: -1;
+    in-out property <int> context-image-index: -1;
+    in-out property <string> context-image-name: "";
+    
+    // 手动匹配相关
+    in-out property <bool> show-manual-match: false;
+    in-out property <string> manual-match-sample-id: "";
+    in-out property <string> manual-match-hole-result: "";
+    in-out property <string> manual-match-test-time: "";
+    
+    callback show-context-menu-at(int, int, int, int, string);  // (x, y, category-index, image-index, image-name)
+    callback hide-context-menu();
+    callback manual-match-image();  // 手动匹配当前图片
+    callback paste-from-clipboard();  // 从剪贴板粘贴数据
+    callback search-by-hole-result(string);  // 根据孔位结果搜索图片
+}
+
+// Excel配对页面适配器（全局单例）
+export global ExcelPageAdapter {
+    // 当前活动的card: 0=血型, 1=抗筛, 2=交叉配血
+    in-out property <int> active-card: 0;
+    
+    // 三个card的Excel数据
+    in-out property <[ExcelRowData]> excel-rows-abo: [];  // 血型
+    in-out property <[ExcelRowData]> excel-rows-as: [];   // 抗筛
+    in-out property <[ExcelRowData]> excel-rows-cm: [];   // 交叉配血
+    
+    // 当前显示的Excel数据（根据active-card切换）
+    in-out property <[ExcelRowData]> current-excel-rows: [];
+    
+    in-out property <int> selected-row: -1;
+    in-out property <string> status-message: "";
+    
+    // 图片预览相关
+    in-out property <bool> show-image-preview: false;
+    in-out property <image> preview-image;
+    in-out property <string> preview-image-name: "";
+    in-out property <int> preview-row-index: -1;
+    in-out property <[string]> matched-images: [];  // 所有匹配的图片名列表
+    in-out property <int> current-matched-index: 0;  // 当前显示的匹配图片索引
+    
+    // 剪贴板相关（用于跨页面数据传递）
+    in-out property <string> clipboard-sample-id: "";
+    in-out property <string> clipboard-hole-result: "";
+    in-out property <string> clipboard-test-time: "";
+    
+    // 回调
+    callback import-excel();
+    callback export-result();
+    callback select-row(int);
+    callback switch-card(int);  // 切换card
+    callback find-matching-image(int);  // 查找匹配图片
+    callback confirm-image-match(int, string);  // 确认图片匹配
+    callback close-image-preview();  // 关闭预览
+    callback unbind-image(int);  // 取消绑定
+    callback next-matched-image();  // 下一张匹配图片
+    callback prev-matched-image();  // 上一张匹配图片
+    callback copy-sample-id(int);  // 复制样本ID
+    callback copy-hole-result(int);  // 复制孔位结果
+    callback copy-test-time(int);  // 复制考察时间
+    
+    // 切换card时更新current-excel-rows
+    switch-card(index) => {
+        active-card = index;
+        if (index == 0) {
+            current-excel-rows = excel-rows-abo;
+        } else if (index == 1) {
+            current-excel-rows = excel-rows-as;
+        } else if (index == 2) {
+            current-excel-rows = excel-rows-cm;
+        }
+        selected-row = -1;
+        status-message = "";  // 切换card时清除状态消息
+    }
+}
+
+// 图片标价页面适配器（全局单例）
+export global PricingPageAdapter {
+    in-out property <int> plan-id: 0;
+    in-out property <string> plan-name: "";
+    in-out property <int> processed-count: 0;
+    in-out property <int> total-count: 0;
+    in-out property <[string]> folders: [];
+    in-out property <int> selected-folder: -1;
+    in-out property <[string]> images: [];  // 当前文件夹的图片路径列表
+    in-out property <int> current-image-index: -1;  // 当前显示的图片索引
+    in-out property <string> current-image-path: "";  // 当前显示的图片路径
+    in-out property <string> folder-prefix: "";  // 完整文件夹路径前缀
+    in-out property <image> current-image;  // 当前显示的图片
+    
+    // 8个价位输入槽位
+    in-out property <string> slot1: "";
+    in-out property <string> slot2: "";
+    in-out property <string> slot3: "";
+    in-out property <string> slot4: "";
+    in-out property <string> slot5: "";
+    in-out property <string> slot6: "";
+    in-out property <string> slot7: "";
+    in-out property <string> slot8: "";
+    // 当前输入位置 (0-7)
+    in-out property <int> current-slot: 0;
+    // 当前图片种类：""=未选择, "blood"=血型, "antibody"=抗筛, "crossmatch"=交叉配血
+    in-out property <string> project-type: "";
+    // 操作状态消息
+    in-out property <string> status-message: "";
+
+    callback select-folder-item(int);
+    callback load-images(int);  // 加载指定文件夹的图片
+    callback next-image();
+    callback prev-image();
+    callback confirm-pricing(int, string, string, string, string);  // 确认标价：plan-id、图片名、路径、价位、种类
+    callback skip-image(int, string);  // 跳过：plan-id、图片路径
+    callback clear-slots();  // 清空所有槽位
+    callback input-code(string);  // 输入价位
+    callback focus-slot(int);  // 聚焦槽位
+    callback delete-slot(int);  // 删除槽位
+    callback set-project-type(string);  // 设置图片种类
+    callback clear-status();  // 清除状态消息
+    callback clear-all-priced(int);  // 清除所有已标价图片
+    
+    // 验证输入组合是否有效
+    // 返回: "" 表示有效，非空表示错误信息
+    pure function validate-input-combo() -> string {
+        let has1 = slot1 != "";
+        let has2 = slot2 != "";
+        let has3 = slot3 != "";
+        let has4 = slot4 != "";
+        let has5 = slot5 != "";
+        let has6 = slot6 != "";
+        let has7 = slot7 != "";
+        let has8 = slot8 != "";
+        
+        // A: 8位全填
+        if has1 && has2 && has3 && has4 && has5 && has6 && has7 && has8 {
+            return "";
+        }
+        // B: 仅前3位有值
+        if has1 && has2 && has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+            return "";
+        }
+        // C: 仅前2位有值
+        if has1 && has2 && !has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+            return "";
+        }
+        // 其他情况
+        return "无效的输入组合";
+    }
+    
+    // 检查输入组合与种类是否匹配
+    // 返回: "" 表示匹配，非空表示错误信息
+    pure function validate-type-combo() -> string {
+        let has1 = slot1 != "";
+        let has2 = slot2 != "";
+        let has3 = slot3 != "";
+        let has4 = slot4 != "";
+        let has5 = slot5 != "";
+        let has6 = slot6 != "";
+        let has7 = slot7 != "";
+        let has8 = slot8 != "";
+        
+        // A: 8位全填 -> 血型
+        if has1 && has2 && has3 && has4 && has5 && has6 && has7 && has8 {
+            if project-type != "blood" {
+                return "8位输入需选择血型";
+            }
+            return "";
+        }
+        // B: 仅前3位有值 -> 交叉配血
+        if has1 && has2 && has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+            if project-type != "crossmatch" {
+                return "3位输入需选择交叉配血";
+            }
+            return "";
+        }
+        // C: 仅前2位有值 -> 抗筛
+        if has1 && has2 && !has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+            if project-type != "antibody" {
+                return "2位输入需选择抗筛";
+            }
+            return "";
+        }
+        return "无效的输入组合";
+    }
+    
+    // 输入价位函数
+    input-code(code) => {
+        if current-slot == 0 {
+            slot1 = code;
+            current-slot = 1;
+        } else if current-slot == 1 {
+            slot2 = code;
+            current-slot = 2;
+        } else if current-slot == 2 {
+            slot3 = code;
+            current-slot = 3;
+        } else if current-slot == 3 {
+            slot4 = code;
+            current-slot = 4;
+        } else if current-slot == 4 {
+            slot5 = code;
+            current-slot = 5;
+        } else if current-slot == 5 {
+            slot6 = code;
+            current-slot = 6;
+        } else if current-slot == 6 {
+            slot7 = code;
+            current-slot = 7;
+        } else if current-slot == 7 {
+            slot8 = code;
+            current-slot = 8;
+        }
+    }
+    
+    // 聚焦到指定槽位
+    focus-slot(index) => {
+        current-slot = index;
+    }
+    
+    // 删除槽位内容
+    delete-slot(index) => {
+        if current-slot == 8 {
+            // 无聚焦状态：从右向左删除最后一个非空槽位
+            if slot8 != "" { slot8 = ""; current-slot = 7; }
+            else if slot7 != "" { slot7 = ""; current-slot = 6; }
+            else if slot6 != "" { slot6 = ""; current-slot = 5; }
+            else if slot5 != "" { slot5 = ""; current-slot = 4; }
+            else if slot4 != "" { slot4 = ""; current-slot = 3; }
+            else if slot3 != "" { slot3 = ""; current-slot = 2; }
+            else if slot2 != "" { slot2 = ""; current-slot = 1; }
+            else if slot1 != "" { slot1 = ""; current-slot = 0; }
+        } else {
+            // 有聚焦状态：删除聚焦位置的值，聚焦向左移动
+            if current-slot == 7 { slot8 = ""; current-slot = 6; }
+            else if current-slot == 6 { slot7 = ""; current-slot = 5; }
+            else if current-slot == 5 { slot6 = ""; current-slot = 4; }
+            else if current-slot == 4 { slot5 = ""; current-slot = 3; }
+            else if current-slot == 3 { slot4 = ""; current-slot = 2; }
+            else if current-slot == 2 { slot3 = ""; current-slot = 1; }
+            else if current-slot == 1 { slot2 = ""; current-slot = 0; }
+            else if current-slot == 0 { slot1 = ""; }
+        }
+    }
+    
+    // 清空所有槽位
+    clear-slots() => {
+        slot1 = "";
+        slot2 = "";
+        slot3 = "";
+        slot4 = "";
+        slot5 = "";
+        slot6 = "";
+        slot7 = "";
+        slot8 = "";
+        current-slot = 0;
+    }
+}

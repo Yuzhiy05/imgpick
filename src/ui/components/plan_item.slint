@@ -1,0 +1,72 @@
+import { LineEdit } from "std-widgets.slint";
+
+export component PlanItem inherits Rectangle {
+    in-out property <int> plan-id: 0;
+    in-out property <string> plan-name: "";
+    in-out property <bool> is-selected: false;
+    in-out property <bool> is-editing: false;
+
+    callback clicked();
+    callback delete-clicked();
+    callback rename-clicked(string);
+
+    width: 120px;
+    height: 46px;
+    border-radius: 8px;
+    background: is-selected ? #e3f2fd : touch.has-hover ? #f5f5f5 : white;
+    border-width: 2px;
+    border-color: is-selected ? #1976D2 : #e0e0e0;
+    clip: true;
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    HorizontalLayout {
+        padding: 0;
+        spacing: 0;
+
+        // 计划名称区域
+        Rectangle {
+            horizontal-stretch: 1;
+            background: transparent;
+
+            if is-editing: LineEdit {
+                text: plan-name;
+                horizontal-stretch: 1;
+                accepted(text) => {
+                    root.rename-clicked(text);
+                }
+            }
+            if !is-editing: Text {
+                text: plan-name;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                color: is-selected ? #1976D2 : #333;
+                font-size: 12px;
+                overflow: elide;
+            }
+        }
+
+        // 删除按钮区域（右侧）
+        Rectangle {
+            width: 32px;
+            background: touch-del.has-hover ? #ffebee : transparent;
+
+            touch-del := TouchArea {
+                clicked => {
+                    root.delete-clicked();
+                }
+            }
+
+            Text {
+                text: "🗑️";
+                font-size: 14px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+}

@@ -1,0 +1,456 @@
+import { Button, ScrollView } from "std-widgets.slint";
+import { ImageCategoryData } from "../structs.slint";
+import { ManagePageAdapter, PricingPageAdapter } from "../globals.slint";
+import { PricingCategoryItem } from "pricing_category_item.slint";
+
+export component PricingPage inherits Rectangle {
+    in-out property <int> plan-id: 0;
+
+    callback select-folder();
+
+    // 2秒后自动清除状态消息（单次触发）
+    Timer {
+        interval: 2s;
+        running: PricingPageAdapter.status-message != "";
+        triggered => {
+            PricingPageAdapter.clear-status();
+        }
+    }
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 8px;
+
+        // 标题行：标题 + 状态消息
+        HorizontalLayout {
+            spacing: 12px;
+            height: 28px;
+
+            Text {
+                text: "图片标价";
+                font-size: 18px;
+                font-weight: 700;
+                color: #1976D2;
+                vertical-alignment: center;
+            }
+
+            // 状态消息（与标题平行）
+            if PricingPageAdapter.status-message != "": Rectangle {
+                horizontal-stretch: 1;
+                background: PricingPageAdapter.status-message == "标价成功" ? #e8f5e9 : #ffebee;
+                border-radius: 4px;
+
+                Text {
+                    text: PricingPageAdapter.status-message;
+                    color: PricingPageAdapter.status-message == "标价成功" ? #2e7d32 : #c62828;
+                    font-size: 13px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+            height: 40px;
+
+            Button {
+                text: "选择文件夹";
+                width: 100px;
+                clicked => {
+                    root.select-folder();
+                }
+            }
+
+            Button {
+                text: "上一张";
+                width: 70px;
+                clicked => { PricingPageAdapter.prev-image(); }
+            }
+
+            Button {
+                text: "下一张";
+                width: 70px;
+                clicked => { PricingPageAdapter.next-image(); }
+            }
+
+            // 当前计划 + 进度
+            Rectangle {
+                horizontal-stretch: 1;
+                background: #f5f5f5;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: #e0e0e0;
+                Text {
+                    text: PricingPageAdapter.plan-name != "" ? "计划: " + PricingPageAdapter.plan-name + "  已处理: " + PricingPageAdapter.processed-count + "/" + PricingPageAdapter.total-count : "未选择计划";
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    color: #1976D2;
+                    font-size: 12px;
+                    font-weight: 600;
+                }
+            }
+
+            // 当前图片种类显示
+            Rectangle {
+                width: 100px;
+                background: PricingPageAdapter.project-type != "" ? #e3f2fd : #f5f5f5;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: PricingPageAdapter.project-type != "" ? #1976D2 : #e0e0e0;
+
+                Text {
+                    text: PricingPageAdapter.project-type == "blood" ? "血型" : PricingPageAdapter.project-type == "antibody" ? "抗筛" : PricingPageAdapter.project-type == "crossmatch" ? "交叉配血" : "未选择种类";
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    color: PricingPageAdapter.project-type != "" ? #1976D2 : #999;
+                    font-size: 12px;
+                }
+            }
+
+            // 全部完成提示
+            if PricingPageAdapter.total-count > 0 && PricingPageAdapter.processed-count >= PricingPageAdapter.total-count: Rectangle {
+                width: 100px;
+                background: #e8f5e9;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: #2e7d32;
+                Text {
+                    text: "全部完成";
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    color: #2e7d32;
+                    font-size: 12px;
+                    font-weight: 600;
+                }
+            }
+        }
+
+        // 图片显示区域 + 分类列表
+        Rectangle {
+            vertical-stretch: 1;
+            background: #f0f0f0;
+            border-radius: 4px;
+            clip: true;
+
+            HorizontalLayout {
+                spacing: 12px;
+
+                // 图片显示区域 (90%)
+                Rectangle {
+                    horizontal-stretch: 9;
+                    vertical-stretch: 1;
+                    background: transparent;
+
+                    if PricingPageAdapter.current-image-path == "": Text {
+                        text: "图片显示区域";
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        color: #999;
+                    }
+                    
+                    if PricingPageAdapter.current-image-path != "": Image {
+                        source: PricingPageAdapter.current-image;
+                        image-fit: contain;
+                        width: 100%;
+                        height: 100%;
+                    }
+                }
+
+                // 分类列表面板 (10%)
+                Rectangle {
+                    horizontal-stretch: 1;
+                    vertical-stretch: 1;
+                    min-width: 140px;
+                    background: #fafafa;
+                    border-width: 1px;
+                    border-color: #e0e0e0;
+                    border-radius: 4px;
+
+                    VerticalLayout {
+                        padding: 4px;
+                        spacing: 2px;
+
+                        Text {
+                            text: "图片分类";
+                            font-size: 11px;
+                            font-weight: 600;
+                            color: #666;
+                            height: 18px;
+                        }
+
+                        if ManagePageAdapter.categories.length == 0: Text {
+                            text: "暂无数据";
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            color: #999;
+                            font-size: 11px;
+                        }
+
+                        if ManagePageAdapter.categories.length > 0: ScrollView {
+                            VerticalLayout {
+                                spacing: 2px;
+                                alignment: start;
+
+                                for category[i] in ManagePageAdapter.categories: PricingCategoryItem {
+                                    category-name: category.name;
+                                    display-name: category.display-name;
+                                    image-count: category.count;
+                                    expanded: category.expanded;
+                                    images: category.images;
+                                    is-selected: ManagePageAdapter.selected-category == i;
+                                    selected-image-index: ManagePageAdapter.current-category-index == i ? ManagePageAdapter.current-image-index : -1;
+                                    
+                                    // 子分类属性
+                                    has-subcategories: category.has-subcategories;
+                                    subcategory-names: category.subcategory-names;
+                                    subcategory-counts: category.subcategory-counts;
+                                    subcategory-expanded: category.subcategory-expanded;
+                                    subcategory-1-images: category.subcategory-1-images;
+                                    subcategory-2-images: category.subcategory-2-images;
+                                    subcategory-3-images: category.subcategory-3-images;
+                                    
+                                    // 子分类选中状态
+                                    selected-subcategory: ManagePageAdapter.current-category-index == i ? ManagePageAdapter.selected-subcategory : -1;
+                                    selected-subcategory-image: ManagePageAdapter.current-category-index == i ? ManagePageAdapter.selected-subcategory-image : -1;
+
+                                    toggle-clicked => {
+                                        ManagePageAdapter.toggle-category(i);
+                                    }
+
+                                    image-clicked(idx) => {
+                                        ManagePageAdapter.select-category(i);
+                                        ManagePageAdapter.select-image(idx);
+                                    }
+                                    
+                                    subcategory-clicked(idx) => {
+                                        ManagePageAdapter.toggle-subcategory(i, idx);
+                                    }
+                                    
+                                    subcategory-image-clicked(sub_idx, img_idx) => {
+                                        ManagePageAdapter.subcategory-image-clicked(i, sub_idx, img_idx);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 8个价位显示槽位 + 删除按钮
+        HorizontalLayout {
+            spacing: 4px;
+            height: 30px;
+
+            // 槽位1
+            Rectangle { border-width: 1px; border-color: PricingPageAdapter.current-slot == 0 ? #1976D2 : #bdbdbd; border-radius: 4px; background: PricingPageAdapter.current-slot == 0 ? #e3f2fd : white; width: 50px; height: 30px;
+                TouchArea { clicked => { PricingPageAdapter.focus-slot(0); } }
+                Text { text: PricingPageAdapter.slot1; horizontal-alignment: center; vertical-alignment: center; }
+            }
+            // 槽位2
+            Rectangle { border-width: 1px; border-color: PricingPageAdapter.current-slot == 1 ? #1976D2 : #bdbdbd; border-radius: 4px; background: PricingPageAdapter.current-slot == 1 ? #e3f2fd : white; width: 50px; height: 30px;
+                TouchArea { clicked => { PricingPageAdapter.focus-slot(1); } }
+                Text { text: PricingPageAdapter.slot2; horizontal-alignment: center; vertical-alignment: center; }
+            }
+            // 槽位3
+            Rectangle { border-width: 1px; border-color: PricingPageAdapter.current-slot == 2 ? #1976D2 : #bdbdbd; border-radius: 4px; background: PricingPageAdapter.current-slot == 2 ? #e3f2fd : white; width: 50px; height: 30px;
+                TouchArea { clicked => { PricingPageAdapter.focus-slot(2); } }
+                Text { text: PricingPageAdapter.slot3; horizontal-alignment: center; vertical-alignment: center; }
+            }
+            // 槽位4
+            Rectangle { border-width: 1px; border-color: PricingPageAdapter.current-slot == 3 ? #1976D2 : #bdbdbd; border-radius: 4px; background: PricingPageAdapter.current-slot == 3 ? #e3f2fd : white; width: 50px; height: 30px;
+                TouchArea { clicked => { PricingPageAdapter.focus-slot(3); } }
+                Text { text: PricingPageAdapter.slot4; horizontal-alignment: center; vertical-alignment: center; }
+            }
+            // 槽位5
+            Rectangle { border-width: 1px; border-color: PricingPageAdapter.current-slot == 4 ? #1976D2 : #bdbdbd; border-radius: 4px; background: PricingPageAdapter.current-slot == 4 ? #e3f2fd : white; width: 50px; height: 30px;
+                TouchArea { clicked => { PricingPageAdapter.focus-slot(4); } }
+                Text { text: PricingPageAdapter.slot5; horizontal-alignment: center; vertical-alignment: center; }
+            }
+            // 槽位6
+            Rectangle { border-width: 1px; border-color: PricingPageAdapter.current-slot == 5 ? #1976D2 : #bdbdbd; border-radius: 4px; background: PricingPageAdapter.current-slot == 5 ? #e3f2fd : white; width: 50px; height: 30px;
+                TouchArea { clicked => { PricingPageAdapter.focus-slot(5); } }
+                Text { text: PricingPageAdapter.slot6; horizontal-alignment: center; vertical-alignment: center; }
+            }
+            // 槽位7
+            Rectangle { border-width: 1px; border-color: PricingPageAdapter.current-slot == 6 ? #1976D2 : #bdbdbd; border-radius: 4px; background: PricingPageAdapter.current-slot == 6 ? #e3f2fd : white; width: 50px; height: 30px;
+                TouchArea { clicked => { PricingPageAdapter.focus-slot(6); } }
+                Text { text: PricingPageAdapter.slot7; horizontal-alignment: center; vertical-alignment: center; }
+            }
+            // 槽位8
+            Rectangle { border-width: 1px; border-color: PricingPageAdapter.current-slot == 7 ? #1976D2 : #bdbdbd; border-radius: 4px; background: PricingPageAdapter.current-slot == 7 ? #e3f2fd : white; width: 50px; height: 30px;
+                TouchArea { clicked => { PricingPageAdapter.focus-slot(7); } }
+                Text { text: PricingPageAdapter.slot8; horizontal-alignment: center; vertical-alignment: center; }
+            }
+            
+            Rectangle { width: 8px; background: transparent; }
+            
+            // 删除按钮
+            Rectangle {
+                width: 50px;
+                height: 30px;
+                background: del-touch.has-hover ? #ffcdd2 : #ef5350;
+                border-radius: 4px;
+                
+                del-touch := TouchArea {
+                    clicked => { PricingPageAdapter.delete-slot(PricingPageAdapter.current-slot); }
+                }
+                
+                Text {
+                    text: "←";
+                    color: white;
+                    font-size: 16px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        // 种类按钮
+        HorizontalLayout {
+            spacing: 4px;
+            height: 30px;
+
+            blood-btn := Rectangle { width: 50px; height: 30px; border-radius: 4px; border-width: 1px; border-color: PricingPageAdapter.project-type == "blood" ? #1976D2 : blood-touch.has-hover ? #90caf9 : #bdbdbd; background: PricingPageAdapter.project-type == "blood" ? #e3f2fd : blood-touch.has-hover ? #f5f5f5 : white;
+                blood-touch := TouchArea { clicked => { 
+                    // 检查当前输入是否允许选择血型（需要8位输入）
+                    let has1 = PricingPageAdapter.slot1 != "";
+                    let has2 = PricingPageAdapter.slot2 != "";
+                    let has3 = PricingPageAdapter.slot3 != "";
+                    let has4 = PricingPageAdapter.slot4 != "";
+                    let has5 = PricingPageAdapter.slot5 != "";
+                    let has6 = PricingPageAdapter.slot6 != "";
+                    let has7 = PricingPageAdapter.slot7 != "";
+                    let has8 = PricingPageAdapter.slot8 != "";
+                    if has1 && has2 && has3 && has4 && has5 && has6 && has7 && has8 {
+                        PricingPageAdapter.set-project-type("blood");
+                    } else if !has1 && !has2 && !has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+                        PricingPageAdapter.set-project-type("blood");
+                    } else {
+                        PricingPageAdapter.status-message = "血型需要8位输入";
+                    }
+                } }
+                Text { text: "血型"; horizontal-alignment: center; vertical-alignment: center; color: PricingPageAdapter.project-type == "blood" ? #1976D2 : #333; }
+            }
+            antibody-btn := Rectangle { width: 50px; height: 30px; border-radius: 4px; border-width: 1px; border-color: PricingPageAdapter.project-type == "antibody" ? #1976D2 : antibody-touch.has-hover ? #90caf9 : #bdbdbd; background: PricingPageAdapter.project-type == "antibody" ? #e3f2fd : antibody-touch.has-hover ? #f5f5f5 : white;
+                antibody-touch := TouchArea { clicked => { 
+                    // 检查当前输入是否允许选择抗筛（需要2位输入）
+                    let has1 = PricingPageAdapter.slot1 != "";
+                    let has2 = PricingPageAdapter.slot2 != "";
+                    let has3 = PricingPageAdapter.slot3 != "";
+                    let has4 = PricingPageAdapter.slot4 != "";
+                    let has5 = PricingPageAdapter.slot5 != "";
+                    let has6 = PricingPageAdapter.slot6 != "";
+                    let has7 = PricingPageAdapter.slot7 != "";
+                    let has8 = PricingPageAdapter.slot8 != "";
+                    if has1 && has2 && !has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+                        PricingPageAdapter.set-project-type("antibody");
+                    } else if !has1 && !has2 && !has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+                        PricingPageAdapter.set-project-type("antibody");
+                    } else {
+                        PricingPageAdapter.status-message = "抗筛需要2位输入";
+                    }
+                } }
+                Text { text: "抗筛"; horizontal-alignment: center; vertical-alignment: center; color: PricingPageAdapter.project-type == "antibody" ? #1976D2 : #333; }
+            }
+            crossmatch-btn := Rectangle { width: 70px; height: 30px; border-radius: 4px; border-width: 1px; border-color: PricingPageAdapter.project-type == "crossmatch" ? #1976D2 : crossmatch-touch.has-hover ? #90caf9 : #bdbdbd; background: PricingPageAdapter.project-type == "crossmatch" ? #e3f2fd : crossmatch-touch.has-hover ? #f5f5f5 : white;
+                crossmatch-touch := TouchArea { clicked => { 
+                    // 检查当前输入是否允许选择交叉配血（需要3位输入）
+                    let has1 = PricingPageAdapter.slot1 != "";
+                    let has2 = PricingPageAdapter.slot2 != "";
+                    let has3 = PricingPageAdapter.slot3 != "";
+                    let has4 = PricingPageAdapter.slot4 != "";
+                    let has5 = PricingPageAdapter.slot5 != "";
+                    let has6 = PricingPageAdapter.slot6 != "";
+                    let has7 = PricingPageAdapter.slot7 != "";
+                    let has8 = PricingPageAdapter.slot8 != "";
+                    if has1 && has2 && has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+                        PricingPageAdapter.set-project-type("crossmatch");
+                    } else if !has1 && !has2 && !has3 && !has4 && !has5 && !has6 && !has7 && !has8 {
+                        PricingPageAdapter.set-project-type("crossmatch");
+                    } else {
+                        PricingPageAdapter.status-message = "交叉配血需要3位输入";
+                    }
+                } }
+                Text { text: "交叉配血"; horizontal-alignment: center; vertical-alignment: center; color: PricingPageAdapter.project-type == "crossmatch" ? #1976D2 : #333; }
+            }
+        }
+        
+        // 价位按钮
+        HorizontalLayout {
+            spacing: 4px;
+            height: 30px;
+            
+            Button { text: "4+"; width: 50px; clicked => { PricingPageAdapter.input-code("4+"); } }
+            Button { text: "3+"; width: 50px; clicked => { PricingPageAdapter.input-code("3+"); } }
+            Button { text: "2+"; width: 50px; clicked => { PricingPageAdapter.input-code("2+"); } }
+            Button { text: "+"; width: 50px; clicked => { PricingPageAdapter.input-code("+"); } }
+            Button { text: "-"; width: 50px; clicked => { PricingPageAdapter.input-code("-"); } }
+            Button { text: "?"; width: 50px; clicked => { PricingPageAdapter.input-code("?"); } }
+            Button { text: "M"; width: 50px; clicked => { PricingPageAdapter.input-code("M"); } }
+        }
+        
+        HorizontalLayout {
+            spacing: 8px;
+            height: 30px;
+
+            Button {
+                text: "确认标价";
+                width: 80px;
+                clicked => {
+                    let price = PricingPageAdapter.slot1 + PricingPageAdapter.slot2 + PricingPageAdapter.slot3 + PricingPageAdapter.slot4 + PricingPageAdapter.slot5 + PricingPageAdapter.slot6 + PricingPageAdapter.slot7 + PricingPageAdapter.slot8;
+                    if price != "" && PricingPageAdapter.current-image-path != "" && PricingPageAdapter.project-type != "" {
+                        // 验证输入组合
+                        let combo-error = PricingPageAdapter.validate-input-combo();
+                        if combo-error != "" {
+                            PricingPageAdapter.status-message = combo-error;
+                        } else {
+                            // 验证种类与输入匹配
+                            let type-error = PricingPageAdapter.validate-type-combo();
+                            if type-error != "" {
+                                PricingPageAdapter.status-message = type-error;
+                            } else {
+                                PricingPageAdapter.confirm-pricing(PricingPageAdapter.plan-id, PricingPageAdapter.current-image-path, PricingPageAdapter.current-image-path, price, PricingPageAdapter.project-type);
+                            }
+                        }
+                    }
+                }
+            }
+
+            Button {
+                text: "上一张";
+                width: 70px;
+                clicked => { PricingPageAdapter.prev-image(); }
+            }
+
+            Button {
+                text: "下一张";
+                width: 70px;
+                clicked => { PricingPageAdapter.next-image(); }
+            }
+
+            Button {
+                text: "跳过";
+                width: 60px;
+                clicked => {
+                    if PricingPageAdapter.current-image-path != "" {
+                        PricingPageAdapter.skip-image(PricingPageAdapter.plan-id, PricingPageAdapter.current-image-path);
+                    }
+                }
+            }
+
+            Rectangle { horizontal-stretch: 1; background: transparent; }
+
+            Button {
+                text: "清除所有已标价";
+                width: 100px;
+                clicked => {
+                    if PricingPageAdapter.plan-id > 0 {
+                        PricingPageAdapter.clear-all-priced(PricingPageAdapter.plan-id);
+                    }
+                }
+            }
+        }
+    }
+}

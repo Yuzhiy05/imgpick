@@ -1,0 +1,43 @@
+// 数据结构定义
+
+// 计划数据
+export struct PlanData {
+    id: int,
+    name: string,
+}
+
+// 图片分类数据
+export struct ImageCategoryData {
+    name: string,
+    display-name: string,
+    count: int,
+    expanded: bool,
+    images: [string],
+    // 子分类属性
+    has-subcategories: bool,
+    subcategory-names: [string],
+    subcategory-counts: [int],
+    subcategory-expanded: [bool],
+    subcategory-1-images: [string],
+    subcategory-2-images: [string],
+    subcategory-3-images: [string],
+}
+
+// Excel行数据
+export struct ExcelRowData {
+    index: int,
+    sample-id: string,
+    hole-result: string,
+    test-time: string,
+    file-path: string,
+    matched-image: string,
+    category: string,
+}
+
+// 图片候选（用于搜索匹配）
+export struct ImageCandidate {
+    file-name: string,
+    file-path: string,
+    match-score: int,
+    category: string,
+}

@@ -1,0 +1,106 @@
+import { Button, LineEdit, ScrollView } from "std-widgets.slint";
+import { PlanData } from "../structs.slint";
+import { PlanPageAdapter } from "../globals.slint";
+import { PlanItem } from "plan_item.slint";
+
+export component PlanPage inherits Rectangle {
+    in-out property <int> plan-id: 0;
+    in-out property <string> plan-name: "";
+
+    // 修改这两项即可，列数自动计算
+    property <length> card-width: 120px;
+    property <length> list-width: 620px;
+    property <length> card-spacing: 12px;
+
+    VerticalLayout {
+        alignment: start;
+        padding: 10px;
+        spacing: 12px;
+
+        Text {
+            text: "添加计划";
+            font-size: 18px;
+            font-weight: 700;
+            color: #1976D2;
+            height: 28px;
+        }
+
+        HorizontalLayout {
+            height: 40px;
+            spacing: 8px;
+
+            new-plan-input := LineEdit {
+                placeholder-text: "输入新计划名称...";
+                width: 300px;
+                accepted(text) => {
+                    if text != "" {
+                        PlanPageAdapter.create-plan(text);
+                        self.text = "";
+                    }
+                }
+            }
+
+            Button {
+                text: "添加";
+                width: 60px;
+                clicked => {
+                    if new-plan-input.text != "" {
+                        PlanPageAdapter.create-plan(new-plan-input.text);
+                        new-plan-input.text = "";
+                    }
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+                background: transparent;
+            }
+        }
+
+        plan-list := Rectangle {
+            vertical-stretch: 1;
+            horizontal-stretch: 1;
+            min-height: 316px;
+            background: #fafafa;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: #e0e0e0;
+            clip: true;
+
+            VerticalLayout {
+                padding: 12px;
+                spacing: 8px;
+                alignment: start;
+
+                Text {
+                    text: "计划列表";
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: #666;
+                    height: 24px;
+                }
+
+                if PlanPageAdapter.plans.length > 0: GridLayout {
+                    spacing: 12px;
+
+                    for plan[i] in PlanPageAdapter.plans: PlanItem {
+                        row: i / PlanPageAdapter.plan-columns;
+                        col: mod(i, PlanPageAdapter.plan-columns);
+                        plan-id: plan.id;
+                        plan-name: plan.name;
+                        is-selected: plan.id == root.plan-id;
+                        clicked => {
+                            PlanPageAdapter.select-plan(plan.id);
+                        }
+                        delete-clicked => {
+                            PlanPageAdapter.delete-plan(plan.id);
+                        }
+                        rename-clicked(name) => {
+                            PlanPageAdapter.rename-plan(plan.id, name);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
