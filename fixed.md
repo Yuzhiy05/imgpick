@@ -1739,6 +1739,26 @@ subcategory-image-right-clicked(cat_idx, sub_idx, img_idx, img_name) => {
 
 ---
 
+## 55. app.slint模块化拆分
+
+**问题描述**: app.slint文件过大（2924行），难以维护和理解。
+
+**原因**: 所有UI组件、数据结构、全局单例都在一个文件中。
+
+**解决方案**: 将app.slint拆分为多个模块文件：
+- `structs.slint`：数据结构定义
+- `globals.slint`：全局单例定义
+- `components/`：8个组件文件
+- `app.slint`：主文件（导入+重新导出+App组件）
+
+**关键点**:
+- 使用 `export { ... }` 重新导出全局单例，确保main.rs可以通过 `ui::` 访问
+- 组件文件从 `globals.slint` 导入全局单例
+- `TouchArea` 不需要从 `std-widgets.slint` 导入
+- ImagePreviewWindow、ManualMatchWindow、App 保留在app.slint中
+
+---
+
 ## 总结（更新）
 
 | 问题类型 | 数量 | 主要原因 |
@@ -1759,8 +1779,11 @@ subcategory-image-right-clicked(cat_idx, sub_idx, img_idx, img_name) => {
 | 子分类功能 | 4 | 嵌套结构设计、高亮状态同步、回调参数缺失、路径构建错误 |
 | Excel导入导出 | 5 | 回调未实现、数据结构缺失、孔位合并逻辑、日期格式转换、考察组对照组分离 |
 | Excel配对功能 | 10 | 状态消息残留、高亮同步、预览窗口显示、关闭按钮无效、列宽对齐、文件名解析、图片显示、右键回调未绑定 |
+| 模块化拆分 | 1 | 文件过大、模块系统限制、导入路径问题 |
 
 **关键经验（新增）**:
 48. Slint组件的回调需要在使用处显式绑定
 49. 独立窗口组件需要在Rust端创建并显示
 50. 跨页面数据传递可以使用全局适配器的属性作为剪贴板
+51. Slint模块拆分时，全局单例需要在主文件中重新导出
+52. `TouchArea` 是Slint内置组件，不需要从std-widgets.slint导入

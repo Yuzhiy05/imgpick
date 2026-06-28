@@ -806,3 +806,16 @@ tokio::spawn(async move {
 详见plan.md文件
 
 **状态**：🔄 待实现
+
+### 12.3 app.slint 模块化拆分 ✅
+**需求**：将app.slint（2924行）拆分为多个模块文件
+**实现**：
+- `structs.slint`：数据结构定义（PlanData、ImageCategoryData、ExcelRowData等）
+- `globals.slint`：全局单例定义（PlanPageAdapter、ManagePageAdapter等）
+- `components/`：8个组件文件（plan_item、plan_page、pricing_category_item等）
+- `app.slint`：主文件（导入+重新导出+App组件）
+**关键点**：
+- 使用 `export { ... }` 重新导出全局单例，确保main.rs可以通过 `ui::` 访问
+- 组件文件从 `globals.slint` 导入全局单例
+- ImagePreviewWindow、ManualMatchWindow、App 保留在app.slint中
+**状态**：✅ 已完成
