@@ -1526,3 +1526,162 @@ CellData::DateTime(dt) => {
 37. 考察组和对照组数据需要通过样本编号列位置区分
 38. DataGridView需要使用结构化数据而不是JSON字符串
 39. Slint的全局单例用于Rust和UI之间的数据通信
+
+---
+
+## 45. 切换Card时状态消息残留
+
+**问题描述**: 在血型Card导入数据成功后，切换到抗筛Card时，成功消息仍然显示。
+
+**原因**: `status-message` 是全局属性，切换Card时没有清除。
+
+**解决方案**: 在 `switch-card` 回调中清除状态消息。
+
+```slint
+switch-card(index) => {
+    active-card = index;
+    // 切换数据...
+    selected-row = -1;
+    status-message = "";  // 切换card时清除状态消息
+}
+```
+
+---
+
+## 46. 子分类高亮同步问题
+
+**问题描述**: 点击血型子分类的第一个图片时，抗筛、交叉配血子分类的第一个图片也被高亮。
+
+**原因**: 所有子分类共享同一个 `selected-image-index` 属性。
+
+**解决方案**: 
+1. 添加 `selected-subcategory` 和 `selected-subcategory-image` 属性
+2. 每个子分类独立跟踪选中的图片索引
+3. 高亮判断条件改为 `(selected-subcategory == 子分类索引 && selected-subcategory-image == 图片索引)`
+
+```slint
+// ManagePageAdapter中
+in-out property <int> selected-subcategory: -1;
+in-out property <int> selected-subcategory-image: -1;
+
+// 高亮判断
+background: (selected-subcategory == 0 && selected-subcategory-image == j) ? #bbdefb : transparent;
+```
+
+---
+
+## 47. 子分类中上一张/下一张高亮不正常
+
+**问题描述**: 在子分类中点击图片后，点击上一张/下一张按钮时图片正常跳转，但高亮不正常显示。
+
+**原因**: `on_next_image` 和 `on_prev_image` 回调只更新了 `current_image_index`，没有更新子分类的选中状态。
+
+**解决方案**: 在回调中检查当前是否在子分类中浏览，同步更新 `selected_subcategory_image`。
+
+```rust
+// 检查当前是否在子分类中浏览
+let selected_subcategory = app.global::<ui::ManagePageAdapter>().get_selected_subcategory();
+if selected_subcategory >= 0 {
+    // 更新子分类的选中图片索引
+    app.global::<ui::ManagePageAdapter>().set_selected_subcategory_image(next_index);
+}
+```
+
+---
+
+## 48. 图片预览窗口无法显示图片
+
+**问题描述**: 找到图片时显示的预览窗口无法显示图片。
+
+**原因**: 预览窗口中的Image组件没有正确绑定到图片属性。
+
+**解决方案**: 
+1. 将 `ImagePreviewWindow` 改为独立属性，不依赖 `ExcelPageAdapter`
+2. 在创建窗口时直接设置图片属性
+
+```rust
+let preview_window = ui::ImagePreviewWindow::new().unwrap();
+preview_window.set_preview_image(img);
+preview_window.set_preview_image_name(image_name.into());
+```
+
+---
+
+## 49. 图片预览窗口关闭按钮无效
+
+**问题描述**: 预览窗口中的关闭按钮点击后没有反应。
+
+**原因**: 回调中只设置了 `show_image_preview` 为 false，但没有实际关闭窗口。
+
+**解决方案**: 在回调中调用 `window().hide()` 来关闭窗口。
+
+```rust
+preview_window.on_close_window(move || {
+    if let Some(app) = weak_for_close.upgrade() {
+        app.global::<ui::ExcelPageAdapter>().set_show_image_preview(false);
+    }
+    if let Some(preview) = preview_weak_for_close.upgrade() {
+        let _ = preview.window().hide();
+    }
+});
+```
+
+---
+
+## 50. Excel列宽和表头对齐问题
+
+**问题描述**: DataGridView中考察时间列名和实际数据没对齐。
+
+**原因**: 表头和数据行的列宽设置不一致。
+
+**解决方案**: 统一表头和数据行的列宽设置。
+
+```slint
+// 表头
+Text { text: "考察时间"; width: 130px; ... }
+
+// 数据行
+Text { text: row.test-time; width: 130px; ... }
+```
+
+---
+
+## 51. 删除不存在的图片不会报错
+
+**问题描述**: 需要评估删除不存在的图片和数据库删除操作是否会报异常。
+
+**评估结果**:
+1. **删除不存在的图片**: `std::fs::remove_file` 返回 `Err`，使用 `let _ =` 忽略错误
+2. **数据库删除**: `DELETE` 语句没有匹配记录时返回 `Ok(0)`，不会报错
+
+**结论**: 两个操作都不会导致程序崩溃或性能问题，可以允许没有绑定关系的图片进行操作而不检查。
+
+---
+
+## 总结（更新）
+
+| 问题类型 | 数量 | 主要原因 |
+|---------|------|---------|
+| Slint语法/API | 4 | 不熟悉Slint特有语法 |
+| Rust类型系统 | 4 | 库版本差异、trait导入、借用移动 |
+| 测试逻辑 | 2 | 状态管理理解错误、断言过时 |
+| 依赖配置 | 2 | dev-dependencies、edition |
+| 上游问题 | 1 | Slint/ICU4X已知bug |
+| Slint布局/模型 | 5 | Flickable宽度传播、GridLayout空模型崩溃、ListView动态高度、ScrollView缺失、高度计算不一致 |
+| UI样式/主题 | 2 | native主题输入框显示问题、窗口宽度累加 |
+| 数据一致性 | 2 | 图片状态多源冲突、DB路径不一致 |
+| 渲染性能 | 1 | 700+项for循环导致黑屏 |
+| 回调/线程 | 2 | thread::spawn不可靠、回调未刷新数据 |
+| 路径处理 | 2 | 混用斜杠、import路径错误 |
+| 回调逻辑 | 1 | 未调用plan_manager.create_plan |
+| 结构体设计 | 1 | 未实现Clone、字段未公开 |
+| 子分类功能 | 4 | 嵌套结构设计、高亮状态同步、回调参数缺失、路径构建错误 |
+| Excel导入导出 | 5 | 回调未实现、数据结构缺失、孔位合并逻辑、日期格式转换、考察组对照组分离 |
+| Excel配对功能 | 7 | 状态消息残留、高亮同步、预览窗口显示、关闭按钮无效、列宽对齐 |
+
+**关键经验（新增）**:
+40. 切换Card时需要清除状态消息
+41. 子分类需要独立的选中状态跟踪
+42. 预览窗口需要独立属性，不依赖全局单例
+43. 窗口关闭需要调用window().hide()
+44. 删除文件和数据库记录都不会报异常，可以不检查
