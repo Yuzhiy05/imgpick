@@ -143,6 +143,8 @@ export component ImageCategoryItem inherits Rectangle {
     callback image-clicked(int);
     callback subcategory-clicked(int);
     callback subcategory-image-clicked(int, int);  // (子分类索引, 图片索引)
+    callback image-right-clicked(int, int, string);  // (category-index, image-index, image-name)
+    callback subcategory-image-right-clicked(int, int, int, string);  // (category-index, subcategory-index, image-index, image-name)
     
     // 计算总高度
     height: expanded ? (30px + (has-subcategories ? 3 * 30px + (subcategory-expanded[0] ? subcategory-1-images.length * 24px : 0px) + (subcategory-expanded[1] ? subcategory-2-images.length * 24px : 0px) + (subcategory-expanded[2] ? subcategory-3-images.length * 24px : 0px) : images.length * 24px)) : 30px;
@@ -258,6 +260,11 @@ export component ImageCategoryItem inherits Rectangle {
                     
                     image-touch1 := TouchArea {
                         clicked => { root.subcategory-image-clicked(0, j); }
+                        pointer-event(event) => {
+                            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                                root.subcategory-image-right-clicked(0, 0, j, image);
+                            }
+                        }
                     }
                     
                     Text {
@@ -420,6 +427,11 @@ export component ImageCategoryItem inherits Rectangle {
                 
                 image-touch := TouchArea {
                     clicked => { root.image-clicked(i); }
+                    pointer-event(event) => {
+                        if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                            root.image-right-clicked(0, i, image);
+                        }
+                    }
                 }
                 
                 Text {
@@ -470,6 +482,26 @@ export global ManagePageAdapter {
     callback select-image(int);
     callback toggle-subcategory(int, int);
     callback subcategory-image-clicked(int, int, int);  // (分类索引, 子分类索引, 图片索引)
+    
+    // 右键菜单相关
+    in-out property <bool> show-context-menu: false;
+    in-out property <int> context-menu-x: 0;
+    in-out property <int> context-menu-y: 0;
+    in-out property <int> context-category-index: -1;
+    in-out property <int> context-image-index: -1;
+    in-out property <string> context-image-name: "";
+    
+    // 手动匹配相关
+    in-out property <bool> show-manual-match: false;
+    in-out property <string> manual-match-sample-id: "";
+    in-out property <string> manual-match-hole-result: "";
+    in-out property <string> manual-match-test-time: "";
+    
+    callback show-context-menu-at(int, int, int, int, string);  // (x, y, category-index, image-index, image-name)
+    callback hide-context-menu();
+    callback manual-match-image();  // 手动匹配当前图片
+    callback paste-from-clipboard();  // 从剪贴板粘贴数据
+    callback search-by-hole-result(string);  // 根据孔位结果搜索图片
 }
 
 // Excel行数据结构
@@ -507,6 +539,11 @@ export global ExcelPageAdapter {
     in-out property <[string]> matched-images: [];  // 所有匹配的图片名列表
     in-out property <int> current-matched-index: 0;  // 当前显示的匹配图片索引
     
+    // 剪贴板相关（用于跨页面数据传递）
+    in-out property <string> clipboard-sample-id: "";
+    in-out property <string> clipboard-hole-result: "";
+    in-out property <string> clipboard-test-time: "";
+    
     // 回调
     callback import-excel();
     callback export-result();
@@ -518,6 +555,9 @@ export global ExcelPageAdapter {
     callback unbind-image(int);  // 取消绑定
     callback next-matched-image();  // 下一张匹配图片
     callback prev-matched-image();  // 上一张匹配图片
+    callback copy-sample-id(int);  // 复制样本ID
+    callback copy-hole-result(int);  // 复制孔位结果
+    callback copy-test-time(int);  // 复制考察时间
     
     // 切换card时更新current-excel-rows
     switch-card(index) => {
@@ -1781,6 +1821,14 @@ export component ManagePage inherits Rectangle {
                                     subcategory-image-clicked(sub_idx, img_idx) => {
                                         ManagePageAdapter.subcategory-image-clicked(i, sub_idx, img_idx);
                                     }
+                                    
+                                    image-right-clicked(cat_idx, img_idx, img_name) => {
+                                        ManagePageAdapter.show-context-menu-at(0, 0, i, img_idx, img_name);
+                                    }
+                                    
+                                    subcategory-image-right-clicked(cat_idx, sub_idx, img_idx, img_name) => {
+                                        ManagePageAdapter.show-context-menu-at(0, 0, i, img_idx, img_name);
+                                    }
                                 }
                             }
                         }
@@ -2009,31 +2057,74 @@ export component ExcelPage inherits Rectangle {
                                     font-size: 13px;
                                 }
 
-                                // 样本编号
-                                Text {
-                                    text: row.sample-id;
+                                // 样本编号（右键复制样本ID）
+                                Rectangle {
                                     width: 100px;
-                                    vertical-alignment: center;
-                                    font-size: 13px;
-                                    color: #1976D2;
-                                    font-weight: 600;
+                                    background: sample-id-touch.has-hover ? #e3f2fd : transparent;
+                                    border-radius: 3px;
+
+                                    sample-id-touch := TouchArea {
+                                        pointer-event(event) => {
+                                            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                                                ExcelPageAdapter.copy-sample-id(i);
+                                            }
+                                        }
+                                    }
+
+                                    Text {
+                                        text: row.sample-id;
+                                        vertical-alignment: center;
+                                        horizontal-alignment: center;
+                                        font-size: 13px;
+                                        color: #1976D2;
+                                        font-weight: 600;
+                                    }
                                 }
 
-                                // 孔位结果
-                                Text {
-                                    text: row.hole-result;
+                                // 孔位结果（右键复制孔位结果）
+                                Rectangle {
                                     width: 130px;
-                                    vertical-alignment: center;
-                                    font-size: 15px;
-                                    overflow: elide;
+                                    background: hole-result-touch.has-hover ? #e3f2fd : transparent;
+                                    border-radius: 3px;
+
+                                    hole-result-touch := TouchArea {
+                                        pointer-event(event) => {
+                                            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                                                ExcelPageAdapter.copy-hole-result(i);
+                                            }
+                                        }
+                                    }
+
+                                    Text {
+                                        text: row.hole-result;
+                                        vertical-alignment: center;
+                                        horizontal-alignment: center;
+                                        font-size: 15px;
+                                        color: #333;
+                                        overflow: elide;
+                                    }
                                 }
 
-                                // 考察时间
-                                Text {
-                                    text: row.test-time;
+                                // 考察时间（右键复制考察时间）
+                                Rectangle {
                                     width: 130px;
-                                    vertical-alignment: center;
-                                    font-size: 13px;
+                                    background: test-time-touch.has-hover ? #e3f2fd : transparent;
+                                    border-radius: 3px;
+
+                                    test-time-touch := TouchArea {
+                                        pointer-event(event) => {
+                                            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                                                ExcelPageAdapter.copy-test-time(i);
+                                            }
+                                        }
+                                    }
+
+                                    Text {
+                                        text: row.test-time;
+                                        vertical-alignment: center;
+                                        horizontal-alignment: center;
+                                        font-size: 13px;
+                                    }
                                 }
 
                                 // 文件路径（可点击查看图片）
@@ -2293,6 +2384,276 @@ export component ImagePreviewWindow inherits Window {
                     color: #666;
                     horizontal-alignment: center;
                     vertical-alignment: center;
+                }
+            }
+        }
+    }
+}
+
+// 手动匹配窗口
+export component ManualMatchWindow inherits Window {
+    title: "手动匹配图片";
+    background: white;
+    width: 500px;
+    height: 400px;
+
+    // 属性
+    in-out property <string> image-name: "";
+    in-out property <string> sample-id: "";
+    in-out property <string> hole-result: "";
+    in-out property <string> test-time: "";
+    in-out property <string> search-result: "";
+    in-out property <bool> has-search-result: false;
+
+    callback close-window();
+    callback paste-sample-id();
+    callback paste-hole-result();
+    callback paste-test-time();
+    callback search-image();
+    callback confirm-match();
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 12px;
+
+        // 标题
+        Text {
+            text: "手动匹配: " + image-name;
+            font-size: 16px;
+            font-weight: 700;
+            color: #1976D2;
+            height: 28px;
+        }
+
+        // 样本ID
+        HorizontalLayout {
+            spacing: 8px;
+            height: 32px;
+
+            Text {
+                text: "样本ID:";
+                font-size: 13px;
+                color: #333;
+                vertical-alignment: center;
+                width: 80px;
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+                height: 28px;
+                background: white;
+                border-width: 1px;
+                border-color: #bdbdbd;
+                border-radius: 4px;
+
+                Text {
+                    text: sample-id != "" ? sample-id : "右键复制后点击粘贴";
+                    font-size: 12px;
+                    color: sample-id != "" ? #333 : #999;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+            }
+
+            Rectangle {
+                width: 60px;
+                height: 28px;
+                background: #e8f5e9;
+                border-radius: 4px;
+
+                Text {
+                    text: "粘贴";
+                    font-size: 12px;
+                    color: #2e7d32;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                TouchArea {
+                    clicked => { root.paste-sample-id(); }
+                }
+            }
+        }
+
+        // 孔位结果
+        HorizontalLayout {
+            spacing: 8px;
+            height: 32px;
+
+            Text {
+                text: "孔位结果:";
+                font-size: 13px;
+                color: #333;
+                vertical-alignment: center;
+                width: 80px;
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+                height: 28px;
+                background: white;
+                border-width: 1px;
+                border-color: #bdbdbd;
+                border-radius: 4px;
+
+                Text {
+                    text: hole-result != "" ? hole-result : "右键复制后点击粘贴";
+                    font-size: 12px;
+                    color: hole-result != "" ? #333 : #999;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+            }
+
+            Rectangle {
+                width: 60px;
+                height: 28px;
+                background: #e8f5e9;
+                border-radius: 4px;
+
+                Text {
+                    text: "粘贴";
+                    font-size: 12px;
+                    color: #2e7d32;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                TouchArea {
+                    clicked => { root.paste-hole-result(); }
+                }
+            }
+        }
+
+        // 考察时间
+        HorizontalLayout {
+            spacing: 8px;
+            height: 32px;
+
+            Text {
+                text: "考察时间:";
+                font-size: 13px;
+                color: #333;
+                vertical-alignment: center;
+                width: 80px;
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+                height: 28px;
+                background: white;
+                border-width: 1px;
+                border-color: #bdbdbd;
+                border-radius: 4px;
+
+                Text {
+                    text: test-time != "" ? test-time : "右键复制后点击粘贴";
+                    font-size: 12px;
+                    color: test-time != "" ? #333 : #999;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+            }
+
+            Rectangle {
+                width: 60px;
+                height: 28px;
+                background: #e8f5e9;
+                border-radius: 4px;
+
+                Text {
+                    text: "粘贴";
+                    font-size: 12px;
+                    color: #2e7d32;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                TouchArea {
+                    clicked => { root.paste-test-time(); }
+                }
+            }
+        }
+
+        // 搜索按钮
+        Rectangle {
+            height: 36px;
+            background: #1976D2;
+            border-radius: 4px;
+
+            Text {
+                text: "根据孔位结果搜索匹配图片";
+                font-size: 13px;
+                font-weight: 600;
+                color: white;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            TouchArea {
+                clicked => { root.search-image(); }
+            }
+        }
+
+        // 搜索结果
+        if has-search-result: Rectangle {
+            height: 36px;
+            background: #e3f2fd;
+            border-radius: 4px;
+            border-width: 1px;
+            border-color: #1976D2;
+
+            Text {
+                text: "找到匹配图片: " + search-result;
+                font-size: 12px;
+                color: #1976D2;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        Rectangle { vertical-stretch: 1; }
+
+        // 底部按钮
+        HorizontalLayout {
+            spacing: 12px;
+            height: 36px;
+
+            Rectangle {
+                horizontal-stretch: 1;
+                background: #4caf50;
+                border-radius: 4px;
+
+                Text {
+                    text: "确认匹配";
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: white;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                TouchArea {
+                    clicked => { root.confirm-match(); }
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+                background: #f44336;
+                border-radius: 4px;
+
+                Text {
+                    text: "取消";
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: white;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                TouchArea {
+                    clicked => { root.close-window(); }
                 }
             }
         }

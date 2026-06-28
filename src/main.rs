@@ -1815,6 +1815,335 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
     
+    // 复制样本ID回调
+    let weak_clone = weak.clone();
+    app.global::<ui::ExcelPageAdapter>().on_copy_sample_id(move |row_index| {
+        if let Some(app) = weak_clone.upgrade() {
+            let current_rows = app.global::<ui::ExcelPageAdapter>().get_current_excel_rows();
+            
+            if let Some(row) = current_rows.iter().nth(row_index as usize) {
+                let sample_id = row.sample_id.to_string();
+                
+                // 复制到剪贴板
+                app.global::<ui::ExcelPageAdapter>().set_clipboard_sample_id(sample_id.clone().into());
+                
+                app.global::<ui::ExcelPageAdapter>().set_status_message(
+                    format!("已复制样本ID: {}", sample_id).into()
+                );
+            }
+        }
+    });
+    
+    // 复制孔位结果回调
+    let weak_clone = weak.clone();
+    app.global::<ui::ExcelPageAdapter>().on_copy_hole_result(move |row_index| {
+        if let Some(app) = weak_clone.upgrade() {
+            let current_rows = app.global::<ui::ExcelPageAdapter>().get_current_excel_rows();
+            
+            if let Some(row) = current_rows.iter().nth(row_index as usize) {
+                let hole_result = row.hole_result.to_string();
+                
+                // 复制到剪贴板
+                app.global::<ui::ExcelPageAdapter>().set_clipboard_hole_result(hole_result.clone().into());
+                
+                app.global::<ui::ExcelPageAdapter>().set_status_message(
+                    format!("已复制孔位结果: {}", hole_result).into()
+                );
+            }
+        }
+    });
+    
+    // 复制考察时间回调
+    let weak_clone = weak.clone();
+    app.global::<ui::ExcelPageAdapter>().on_copy_test_time(move |row_index| {
+        if let Some(app) = weak_clone.upgrade() {
+            let current_rows = app.global::<ui::ExcelPageAdapter>().get_current_excel_rows();
+            
+            if let Some(row) = current_rows.iter().nth(row_index as usize) {
+                let test_time = row.test_time.to_string();
+                
+                // 复制到剪贴板
+                app.global::<ui::ExcelPageAdapter>().set_clipboard_test_time(test_time.clone().into());
+                
+                app.global::<ui::ExcelPageAdapter>().set_status_message(
+                    format!("已复制考察时间: {}", test_time).into()
+                );
+            }
+        }
+    });
+    
+    // ManagePage 右键菜单回调 - 创建手动匹配窗口
+    let weak_clone = weak.clone();
+    let db_clone = db.clone();
+    let base_dir_clone = base_dir.clone();
+    app.global::<ui::ManagePageAdapter>().on_show_context_menu_at(move |x, y, cat_index, img_index, img_name| {
+        if let Some(app) = weak_clone.upgrade() {
+            let img_name_str = img_name.to_string();
+            
+            // 创建手动匹配窗口
+            let match_window = ui::ManualMatchWindow::new().unwrap();
+            
+            // 设置属性
+            match_window.set_image_name(img_name.clone());
+            
+            // 设置粘贴样本ID回调
+            let weak_for_paste = app.as_weak();
+            let match_weak = match_window.as_weak();
+            match_window.on_paste_sample_id(move || {
+                if let Some(app) = weak_for_paste.upgrade() {
+                    let sample_id = app.global::<ui::ExcelPageAdapter>().get_clipboard_sample_id();
+                    if let Some(mw) = match_weak.upgrade() {
+                        mw.set_sample_id(sample_id);
+                    }
+                }
+            });
+            
+            // 设置粘贴孔位结果回调
+            let weak_for_paste = app.as_weak();
+            let match_weak = match_window.as_weak();
+            match_window.on_paste_hole_result(move || {
+                if let Some(app) = weak_for_paste.upgrade() {
+                    let hole_result = app.global::<ui::ExcelPageAdapter>().get_clipboard_hole_result();
+                    if let Some(mw) = match_weak.upgrade() {
+                        mw.set_hole_result(hole_result);
+                    }
+                }
+            });
+            
+            // 设置粘贴考察时间回调
+            let weak_for_paste = app.as_weak();
+            let match_weak = match_window.as_weak();
+            match_window.on_paste_test_time(move || {
+                if let Some(app) = weak_for_paste.upgrade() {
+                    let test_time = app.global::<ui::ExcelPageAdapter>().get_clipboard_test_time();
+                    if let Some(mw) = match_weak.upgrade() {
+                        mw.set_test_time(test_time);
+                    }
+                }
+            });
+            
+            // 设置搜索图片回调
+            let weak_for_search = app.as_weak();
+            let db_for_search = db_clone.clone();
+            let match_weak = match_window.as_weak();
+            match_window.on_search_image(move || {
+                if let Some(app) = weak_for_search.upgrade() {
+                    if let Some(mw) = match_weak.upgrade() {
+                        let hole_result = mw.get_hole_result().to_string();
+                        let plan_id = app.global::<ui::PricingPageAdapter>().get_plan_id();
+                        
+                        if !hole_result.is_empty() && plan_id > 0 {
+                            let all_priced = db_for_search.get_images_by_category(plan_id as i64, models::ImageCategory::Priced)
+                                .unwrap_or_default();
+                            
+                            let mut matching_images = Vec::new();
+                            for img in &all_priced {
+                                if let Some(ref price) = img.price {
+                                    if price == &hole_result {
+                                        matching_images.push(img.file_name.clone());
+                                    }
+                                }
+                            }
+                            
+                            if !matching_images.is_empty() {
+                                mw.set_search_result(matching_images[0].clone().into());
+                                mw.set_has_search_result(true);
+                            } else {
+                                mw.set_search_result("未找到匹配图片".into());
+                                mw.set_has_search_result(true);
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // 设置确认匹配回调
+            let weak_for_confirm = app.as_weak();
+            let db_for_confirm = db_clone.clone();
+            let base_dir_for_confirm = base_dir_clone.clone();
+            let match_weak = match_window.as_weak();
+            match_window.on_confirm_match(move || {
+                if let Some(app) = weak_for_confirm.upgrade() {
+                    if let Some(mw) = match_weak.upgrade() {
+                        let sample_id = mw.get_sample_id().to_string();
+                        let image_name = mw.get_image_name().to_string();
+                        let search_result = mw.get_search_result().to_string();
+                        
+                        if sample_id.is_empty() {
+                            return;
+                        }
+                        
+                        // 使用搜索到的图片或当前图片
+                        let target_image = if !search_result.is_empty() && search_result != "未找到匹配图片" {
+                            search_result
+                        } else {
+                            image_name
+                        };
+                        
+                        if target_image.is_empty() {
+                            return;
+                        }
+                        
+                        // 获取计划信息
+                        let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
+                        if plan_name.is_empty() {
+                            return;
+                        }
+                        
+                        // 复制图片到final目录
+                        let src_dir = base_dir_for_confirm.join("plans").join(&plan_name).join("priced");
+                        let final_dir = base_dir_for_confirm.join("plans").join(&plan_name).join("final");
+                        
+                        if !final_dir.exists() {
+                            let _ = std::fs::create_dir_all(&final_dir);
+                        }
+                        
+                        let src_path = src_dir.join(&target_image);
+                        let dest_path = final_dir.join(&target_image);
+                        
+                        if src_path.exists() {
+                            let _ = std::fs::copy(&src_path, &dest_path);
+                        }
+                        
+                        // 更新数据库中的sample_id
+                        if let Ok(plan) = db_for_confirm.get_plan_by_name(&plan_name) {
+                            if let Some(plan) = plan {
+                                if let Ok(Some(image)) = db_for_confirm.find_image_by_name(plan.id, &target_image) {
+                                    let _ = db_for_confirm.update_image_sample_id(image.id, Some(&sample_id));
+                                }
+                            }
+                        }
+                        
+                        eprintln!("手动匹配: {} -> {}", target_image, sample_id);
+                    }
+                }
+            });
+            
+            // 设置关闭窗口回调
+            let match_weak = match_window.as_weak();
+            match_window.on_close_window(move || {
+                if let Some(mw) = match_weak.upgrade() {
+                    // 窗口会自动关闭
+                }
+            });
+            
+            match_window.show().unwrap();
+        }
+    });
+    
+    let weak_clone = weak.clone();
+    app.global::<ui::ManagePageAdapter>().on_hide_context_menu(move || {
+        if let Some(app) = weak_clone.upgrade() {
+            app.global::<ui::ManagePageAdapter>().set_show_context_menu(false);
+        }
+    });
+    
+    // 从剪贴板粘贴数据回调
+    let weak_clone = weak.clone();
+    app.global::<ui::ManagePageAdapter>().on_paste_from_clipboard(move || {
+        if let Some(app) = weak_clone.upgrade() {
+            let sample_id = app.global::<ui::ExcelPageAdapter>().get_clipboard_sample_id().to_string();
+            let hole_result = app.global::<ui::ExcelPageAdapter>().get_clipboard_hole_result().to_string();
+            let test_time = app.global::<ui::ExcelPageAdapter>().get_clipboard_test_time().to_string();
+            
+            app.global::<ui::ManagePageAdapter>().set_manual_match_sample_id(sample_id.into());
+            app.global::<ui::ManagePageAdapter>().set_manual_match_hole_result(hole_result.into());
+            app.global::<ui::ManagePageAdapter>().set_manual_match_test_time(test_time.into());
+            
+            app.global::<ui::ManagePageAdapter>().set_show_manual_match(true);
+        }
+    });
+    
+    // 手动匹配图片回调
+    let weak_clone = weak.clone();
+    let db_clone = db.clone();
+    let base_dir_clone = base_dir.clone();
+    app.global::<ui::ManagePageAdapter>().on_manual_match_image(move || {
+        if let Some(app) = weak_clone.upgrade() {
+            let sample_id = app.global::<ui::ManagePageAdapter>().get_manual_match_sample_id().to_string();
+            let hole_result = app.global::<ui::ManagePageAdapter>().get_manual_match_hole_result().to_string();
+            let image_name = app.global::<ui::ManagePageAdapter>().get_context_image_name().to_string();
+            
+            if sample_id.is_empty() || image_name.is_empty() {
+                app.global::<ui::ManagePageAdapter>().set_show_manual_match(false);
+                return;
+            }
+            
+            // 获取计划信息
+            let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
+            if plan_name.is_empty() {
+                return;
+            }
+            
+            // 复制图片到final目录
+            let src_dir = base_dir_clone.join("plans").join(&plan_name).join("priced");
+            let final_dir = base_dir_clone.join("plans").join(&plan_name).join("final");
+            
+            if !final_dir.exists() {
+                let _ = std::fs::create_dir_all(&final_dir);
+            }
+            
+            let src_path = src_dir.join(&image_name);
+            let dest_path = final_dir.join(&image_name);
+            
+            if src_path.exists() {
+                let _ = std::fs::copy(&src_path, &dest_path);
+            }
+            
+            // 更新数据库中的sample_id
+            if let Ok(plan) = db_clone.get_plan_by_name(&plan_name) {
+                if let Some(plan) = plan {
+                    if let Ok(Some(mut image)) = db_clone.find_image_by_name(plan.id, &image_name) {
+                        let _ = db_clone.update_image_sample_id(image.id, Some(&sample_id));
+                    }
+                }
+            }
+            
+            app.global::<ui::ManagePageAdapter>().set_show_manual_match(false);
+            app.global::<ui::ManagePageAdapter>().set_context_image_name("".into());
+            
+            eprintln!("手动匹配: {} -> {}", image_name, sample_id);
+        }
+    });
+    
+    // 根据孔位结果搜索图片回调
+    let weak_clone = weak.clone();
+    let db_clone = db.clone();
+    app.global::<ui::ManagePageAdapter>().on_search_by_hole_result(move |hole_result| {
+        if let Some(app) = weak_clone.upgrade() {
+            let plan_id = app.global::<ui::PricingPageAdapter>().get_plan_id();
+            if plan_id == 0 {
+                return;
+            }
+            
+            let hole_result_str = hole_result.to_string();
+            if hole_result_str.is_empty() {
+                return;
+            }
+            
+            // 在已标价图片中搜索匹配的图片
+            let excel_manager = excel_manager::ExcelManager::new(db_clone.clone());
+            let all_priced = db_clone.get_images_by_category(plan_id as i64, models::ImageCategory::Priced)
+                .unwrap_or_default();
+            
+            let mut matching_images = Vec::new();
+            for img in &all_priced {
+                if let Some(ref price) = img.price {
+                    if price == &hole_result_str {
+                        matching_images.push(img.file_name.clone());
+                    }
+                }
+            }
+            
+            if matching_images.is_empty() {
+                app.global::<ui::ManagePageAdapter>().set_context_image_name("".into());
+            } else {
+                // 选择第一个匹配的图片
+                app.global::<ui::ManagePageAdapter>().set_context_image_name(matching_images[0].clone().into());
+            }
+        }
+    });
+    
     app.run()?;
     
     Ok(())
