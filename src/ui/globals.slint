@@ -173,7 +173,7 @@ export global PricingPageAdapter {
     
     // 验证输入组合是否有效
     // 返回: "" 表示有效，非空表示错误信息
-    pure function validate-input-combo() -> string {
+    public pure function validate-input-combo() -> string {
         let has1 = slot1 != "";
         let has2 = slot2 != "";
         let has3 = slot3 != "";
@@ -201,7 +201,7 @@ export global PricingPageAdapter {
     
     // 检查输入组合与种类是否匹配
     // 返回: "" 表示匹配，非空表示错误信息
-    pure function validate-type-combo() -> string {
+    public pure function validate-type-combo() -> string {
         let has1 = slot1 != "";
         let has2 = slot2 != "";
         let has3 = slot3 != "";
