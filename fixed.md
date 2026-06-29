@@ -18,6 +18,8 @@ export component App inherits Window {
 }
 ```
 
+**状态**: 已修复，模块化拆分后组件导出正常工作。
+
 ---
 
 ## 2. Slint font-weight语法错误
@@ -148,11 +150,11 @@ tempfile = "3"
 
 **相关Issue**: 
 - [slint-ui/slint#11638](https://github.com/slint-ui/slint/issues/11638)
-- [slint-ui/slint#11950](https://github.com/slint-ui/slint/pull/11950) - 已合并修复，等待新版本发布
+- [slint-ui/slint#11950](https://github.com/slint-ui/slint/pull/11950) - 已合并修复
 
 **解决方案**: 
+- 升级Slint到包含修复的版本
 - 此警告**不影响程序功能**，可安全忽略
-- 等待Slint发布包含parley 0.10（含complex-scripts特性）的新版本
 
 ---
 
@@ -187,7 +189,36 @@ slint = { version = "1.16.1", features = ["default"] }
 
 ---
 
-## 总结
+## 56. Slint子组件中emoji不显示（variation selector问题）
+
+**问题描述**: 模块化拆分后，子组件（如plan_item.slint）中的emoji（🗑️）显示为方块，但主文件app.slint中的emoji正常。
+
+**原因**: 部分emoji带有variation selector (U+FE0F)，Slint在子组件中渲染时字体回退链找不到对应字体。主文件和子组件的字体上下文不同。
+
+**解决方案**:
+1. 对于无法避免的emoji（如🗑️），在Text元素上添加 `font-family: "Segoe UI Emoji"`
+2. 对于可以替换的emoji（如🖼️→📸），替换为不带variation selector的emoji
+
+```slint
+// 方案1：指定字体
+Text {
+    text: "🗑️";
+    font-family: "Segoe UI Emoji";
+}
+
+// 方案2：替换emoji
+// 🖼️ (带variation selector) → 📸 (不带variation selector)
+```
+
+**关键点**:
+1. variation selector (U+FE0F) 会导致Slint在子组件中渲染失败
+2. `font-family` 是Text组件的属性，不是Window的属性
+3. 主文件中的emoji不受影响，只有子组件中的emoji需要处理
+4. 常见带variation selector的emoji：🖼️🗑️🏷️；不带的：📷📋📁📊📸💰🎨
+
+---
+
+## 总结（更新）
 
 | 问题类型 | 数量 | 主要原因 |
 |---------|------|---------|
@@ -1780,6 +1811,7 @@ subcategory-image-right-clicked(cat_idx, sub_idx, img_idx, img_name) => {
 | Excel导入导出 | 5 | 回调未实现、数据结构缺失、孔位合并逻辑、日期格式转换、考察组对照组分离 |
 | Excel配对功能 | 10 | 状态消息残留、高亮同步、预览窗口显示、关闭按钮无效、列宽对齐、文件名解析、图片显示、右键回调未绑定 |
 | 模块化拆分 | 1 | 文件过大、模块系统限制、导入路径问题 |
+| Emoji渲染 | 1 | variation selector导致子组件emoji显示异常 |
 
 **关键经验（新增）**:
 48. Slint组件的回调需要在使用处显式绑定
@@ -1787,3 +1819,4 @@ subcategory-image-right-clicked(cat_idx, sub_idx, img_idx, img_name) => {
 50. 跨页面数据传递可以使用全局适配器的属性作为剪贴板
 51. Slint模块拆分时，全局单例需要在主文件中重新导出
 52. `TouchArea` 是Slint内置组件，不需要从std-widgets.slint导入
+53. variation selector (U+FE0F) 会导致Slint子组件中emoji渲染失败，需用 `font-family: "Segoe UI Emoji"` 或替换为无VS的emoji
