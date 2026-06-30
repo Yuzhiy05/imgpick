@@ -1333,7 +1333,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             }
                             
-                            // 恢复匹配状态
+                            // 恢复匹配状态（通过考察时间）
                             let mut matched_count = 0;
                             for row in excel_rows.iter_mut() {
                                 let test_time = row.test_time.to_string();
@@ -1346,6 +1346,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             
                             eprintln!("恢复匹配状态: {} 张图片", matched_count);
+                        }
+                        
+                        // 通过数据库中的sample_id恢复匹配状态
+                        if let Ok(plan) = db_clone.get_plan_by_name(&plan_name) {
+                            if let Some(plan) = plan {
+                                for row in excel_rows.iter_mut() {
+                                    let sample_id = row.sample_id.to_string();
+                                    if !sample_id.is_empty() && row.matched_image.to_string().is_empty() {
+                                        // 查找数据库中已匹配的图片
+                                        if let Ok(Some(image)) = db_clone.find_image_by_sample_id(plan.id, &sample_id) {
+                                            row.matched_image = image.file_name.clone().into();
+                                            eprintln!("从数据库恢复匹配: {} -> {}", sample_id, image.file_name);
+                                        }
+                                    }
+                                }
+                            }
                         }
                         
                         // 根据active_card更新对应的数据列表
@@ -1872,6 +1888,245 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
     
+    // 打开匹配窗口回调
+    let weak_clone = weak.clone();
+    let db_clone = db.clone();
+    let base_dir_clone = base_dir.clone();
+    app.global::<ui::ExcelPageAdapter>().on_open_match_window(move |row_index| {
+        if let Some(app) = weak_clone.upgrade() {
+            let current_rows = app.global::<ui::ExcelPageAdapter>().get_current_excel_rows();
+            
+            if let Some(row) = current_rows.iter().nth(row_index as usize) {
+                let sample_id = row.sample_id.to_string();
+                let hole_result = row.hole_result.to_string();
+                
+                // 创建手动匹配窗口
+                let match_window = ui::ManualMatchWindow::new().unwrap();
+                
+                // 设置属性
+                match_window.set_sample_id(sample_id.clone().into());
+                match_window.set_hole_result(hole_result.clone().into());
+                match_window.set_new_hole_result(hole_result.into());
+                
+                // 设置搜索图片回调
+                let weak_for_search = app.as_weak();
+                let db_for_search = db_clone.clone();
+                let match_weak = match_window.as_weak();
+                match_window.on_search_images(move || {
+                    if let Some(app) = weak_for_search.upgrade() {
+                        if let Some(mw) = match_weak.upgrade() {
+                            let hole_result = mw.get_new_hole_result().to_string();
+                            let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
+                            
+                            if hole_result.is_empty() || plan_name.is_empty() {
+                                mw.set_status_message("孔位结果为空或未选择计划".into());
+                                mw.set_status_success(false);
+                                return;
+                            }
+                            
+                            // 获取计划ID
+                            if let Ok(Some(plan)) = db_for_search.get_plan_by_name(&plan_name) {
+                                let plan_id = plan.id;
+                                
+                                // 获取所有已标价图片
+                                let all_priced = db_for_search.get_images_by_category(plan_id, models::ImageCategory::Priced)
+                                    .unwrap_or_default();
+                                
+                                // 搜索匹配图片 - 移除逗号后比较
+                                let hole_result_no_comma = hole_result.replace(',', "");
+                                let mut matching_images = Vec::new();
+                                for img in &all_priced {
+                                    if let Some(ref price) = img.price {
+                                        // 数据库存储的是不带逗号的版本
+                                        let price_no_comma = price.replace(',', "");
+                                        if price_no_comma == hole_result_no_comma {
+                                            matching_images.push(img.file_name.clone());
+                                        }
+                                    }
+                                }
+                                
+                                if matching_images.is_empty() {
+                                    mw.set_status_message(format!("未找到孔位结果为 {} 的图片", hole_result).into());
+                                    mw.set_status_success(false);
+                                } else {
+                                    mw.set_status_message(format!("找到 {} 张匹配图片", matching_images.len()).into());
+                                    mw.set_status_success(true);
+                                }
+                                
+                                // 更新候选图片列表
+                                let shared_images: Vec<slint::SharedString> = matching_images.into_iter().map(|s| s.into()).collect();
+                                mw.set_candidate_images(shared_images.as_slice().into());
+                            }
+                        }
+                    }
+                });
+                
+                // 设置确认匹配回调
+                let weak_for_confirm = app.as_weak();
+                let db_for_confirm = db_clone.clone();
+                let base_dir_for_confirm = base_dir_clone.clone();
+                let match_weak = match_window.as_weak();
+                let row_index_clone = row_index;
+                match_window.on_confirm_match(move || {
+                    if let Some(app) = weak_for_confirm.upgrade() {
+                        if let Some(mw) = match_weak.upgrade() {
+                            let sample_id = mw.get_sample_id().to_string();
+                            let matched_image = mw.get_matched_image().to_string();
+                            let new_hole_result = mw.get_new_hole_result().to_string();
+                            
+                            if sample_id.is_empty() {
+                                mw.set_status_message("样本ID为空".into());
+                                mw.set_status_success(false);
+                                return;
+                            }
+                            
+                            if matched_image.is_empty() {
+                                mw.set_status_message("请选择要匹配的图片".into());
+                                mw.set_status_success(false);
+                                return;
+                            }
+                            
+                            // 验证孔位结果格式：最多7个逗号（8个孔位）
+                            let comma_count = new_hole_result.matches(',').count();
+                            let validated_hole_result = if comma_count > 7 {
+                                // 截断到第7个逗号后一个字符
+                                let mut pos = 0;
+                                let mut count = 0;
+                                for (i, c) in new_hole_result.char_indices() {
+                                    if c == ',' {
+                                        count += 1;
+                                        if count == 7 {
+                                            pos = i + 2; // 逗号后一个字符
+                                            break;
+                                        }
+                                    }
+                                }
+                                if pos > 0 && pos <= new_hole_result.len() {
+                                    new_hole_result[..pos].to_string()
+                                } else {
+                                    new_hole_result
+                                }
+                            } else {
+                                new_hole_result
+                            };
+                            
+                            // 获取计划信息
+                            let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
+                            if plan_name.is_empty() {
+                                mw.set_status_message("未选择计划".into());
+                                mw.set_status_success(false);
+                                return;
+                            }
+                            
+                            // 复制图片到final目录
+                            let src_dir = base_dir_for_confirm.join("plans").join(&plan_name).join("priced");
+                            let final_dir = base_dir_for_confirm.join("plans").join(&plan_name).join("final");
+                            
+                            if !final_dir.exists() {
+                                let _ = std::fs::create_dir_all(&final_dir);
+                            }
+                            
+                            let src_path = src_dir.join(&matched_image);
+                            let dest_path = final_dir.join(&matched_image);
+                            
+                            if src_path.exists() {
+                                let _ = std::fs::copy(&src_path, &dest_path);
+                            }
+                            
+                            // 更新数据库中的sample_id
+                            if let Ok(plan) = db_for_confirm.get_plan_by_name(&plan_name) {
+                                if let Some(plan) = plan {
+                                    if let Ok(Some(image)) = db_for_confirm.find_image_by_name(plan.id, &matched_image) {
+                                        let _ = db_for_confirm.update_image_sample_id(image.id, Some(&sample_id));
+                                        
+                                        // 更新Excel行数据
+                                        let current_rows = app.global::<ui::ExcelPageAdapter>().get_current_excel_rows();
+                                        let mut rows: Vec<ui::ExcelRowData> = current_rows.iter().collect();
+                                        
+                                        // 更新指定行的matched_image
+                                        if let Some(row) = rows.get_mut(row_index_clone as usize) {
+                                            row.matched_image = matched_image.clone().into();
+                                        }
+                                        
+                                        // 根据active-card更新对应的excel-rows
+                                        let active_card = app.global::<ui::ExcelPageAdapter>().get_active_card();
+                                        match active_card {
+                                            0 => app.global::<ui::ExcelPageAdapter>().set_excel_rows_abo(rows.as_slice().into()),
+                                            1 => app.global::<ui::ExcelPageAdapter>().set_excel_rows_as(rows.as_slice().into()),
+                                            2 => app.global::<ui::ExcelPageAdapter>().set_excel_rows_cm(rows.as_slice().into()),
+                                            _ => {}
+                                        }
+                                        app.global::<ui::ExcelPageAdapter>().set_current_excel_rows(rows.as_slice().into());
+                                        
+                                        mw.set_status_message(format!("匹配成功: {} -> {}", matched_image, sample_id).into());
+                                        mw.set_status_success(true);
+                                    } else {
+                                        mw.set_status_message("数据库中未找到该图片".into());
+                                        mw.set_status_success(false);
+                                    }
+                                }
+                            } else {
+                                mw.set_status_message("未找到计划".into());
+                                mw.set_status_success(false);
+                            }
+                        }
+                    }
+                });
+                
+                // 设置预览图片回调
+                let weak_for_preview = app.as_weak();
+                let db_for_preview = db_clone.clone();
+                let base_dir_for_preview = base_dir_clone.clone();
+                let match_weak = match_window.as_weak();
+                match_window.on_preview_image(move || {
+                    if let Some(app) = weak_for_preview.upgrade() {
+                        if let Some(mw) = match_weak.upgrade() {
+                            let matched_image = mw.get_matched_image().to_string();
+                            let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
+                            
+                            if matched_image.is_empty() || plan_name.is_empty() {
+                                return;
+                            }
+                            
+                            // 获取图片路径
+                            let src_dir = base_dir_for_preview.join("plans").join(&plan_name).join("priced");
+                            let image_path = src_dir.join(&matched_image);
+                            
+                            if image_path.exists() {
+                                // 加载图片并显示预览窗口
+                                if let Ok(image) = slint::Image::load_from_path(&image_path) {
+                                    let preview_window = ui::ImagePreviewWindow::new().unwrap();
+                                    preview_window.set_preview_image(image);
+                                    preview_window.set_preview_image_name(matched_image.clone().into());
+                                    
+                                    // 设置关闭回调
+                                    let preview_weak = preview_window.as_weak();
+                                    preview_window.on_close_window(move || {
+                                        if let Some(pw) = preview_weak.upgrade() {
+                                            let _ = pw.window().hide();
+                                        }
+                                    });
+                                    
+                                    preview_window.show().unwrap();
+                                }
+                            }
+                        }
+                    }
+                });
+                
+                // 设置关闭窗口回调
+                let match_weak = match_window.as_weak();
+                match_window.on_close_window(move || {
+                    if let Some(mw) = match_weak.upgrade() {
+                        let _ = mw.window().hide();
+                    }
+                });
+                
+                match_window.show().unwrap();
+            }
+        }
+    });
+    
     // ManagePage 右键菜单回调 - 创建手动匹配窗口
     let weak_clone = weak.clone();
     let db_clone = db.clone();
@@ -1883,75 +2138,58 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // 创建手动匹配窗口
             let match_window = ui::ManualMatchWindow::new().unwrap();
             
-            // 设置属性
-            match_window.set_image_name(img_name.clone());
-            
-            // 设置粘贴样本ID回调
-            let weak_for_paste = app.as_weak();
-            let match_weak = match_window.as_weak();
-            match_window.on_paste_sample_id(move || {
-                if let Some(app) = weak_for_paste.upgrade() {
-                    let sample_id = app.global::<ui::ExcelPageAdapter>().get_clipboard_sample_id();
-                    if let Some(mw) = match_weak.upgrade() {
-                        mw.set_sample_id(sample_id);
-                    }
-                }
-            });
-            
-            // 设置粘贴孔位结果回调
-            let weak_for_paste = app.as_weak();
-            let match_weak = match_window.as_weak();
-            match_window.on_paste_hole_result(move || {
-                if let Some(app) = weak_for_paste.upgrade() {
-                    let hole_result = app.global::<ui::ExcelPageAdapter>().get_clipboard_hole_result();
-                    if let Some(mw) = match_weak.upgrade() {
-                        mw.set_hole_result(hole_result);
-                    }
-                }
-            });
-            
-            // 设置粘贴考察时间回调
-            let weak_for_paste = app.as_weak();
-            let match_weak = match_window.as_weak();
-            match_window.on_paste_test_time(move || {
-                if let Some(app) = weak_for_paste.upgrade() {
-                    let test_time = app.global::<ui::ExcelPageAdapter>().get_clipboard_test_time();
-                    if let Some(mw) = match_weak.upgrade() {
-                        mw.set_test_time(test_time);
-                    }
-                }
-            });
+            // 设置属性 - 从图片名中提取样本ID
+            let sample_id = img_name_str.split('_').next().unwrap_or(&img_name_str).to_string();
+            match_window.set_sample_id(sample_id.clone().into());
             
             // 设置搜索图片回调
             let weak_for_search = app.as_weak();
             let db_for_search = db_clone.clone();
             let match_weak = match_window.as_weak();
-            match_window.on_search_image(move || {
+            match_window.on_search_images(move || {
                 if let Some(app) = weak_for_search.upgrade() {
                     if let Some(mw) = match_weak.upgrade() {
-                        let hole_result = mw.get_hole_result().to_string();
-                        let plan_id = app.global::<ui::PricingPageAdapter>().get_plan_id();
+                        let hole_result = mw.get_new_hole_result().to_string();
+                        let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
                         
-                        if !hole_result.is_empty() && plan_id > 0 {
-                            let all_priced = db_for_search.get_images_by_category(plan_id as i64, models::ImageCategory::Priced)
+                        if hole_result.is_empty() || plan_name.is_empty() {
+                            mw.set_status_message("孔位结果为空或未选择计划".into());
+                            mw.set_status_success(false);
+                            return;
+                        }
+                        
+                        // 获取计划ID
+                        if let Ok(Some(plan)) = db_for_search.get_plan_by_name(&plan_name) {
+                            let plan_id = plan.id;
+                            
+                            // 获取所有已标价图片
+                            let all_priced = db_for_search.get_images_by_category(plan_id, models::ImageCategory::Priced)
                                 .unwrap_or_default();
                             
+                            // 搜索匹配图片 - 移除逗号后比较
+                            let hole_result_no_comma = hole_result.replace(',', "");
                             let mut matching_images = Vec::new();
                             for img in &all_priced {
                                 if let Some(ref price) = img.price {
-                                    if price == &hole_result {
+                                    // 数据库存储的是不带逗号的版本
+                                    let price_no_comma = price.replace(',', "");
+                                    if price_no_comma == hole_result_no_comma {
                                         matching_images.push(img.file_name.clone());
                                     }
                                 }
                             }
                             
-                            if !matching_images.is_empty() {
-                                mw.set_search_result(matching_images[0].clone().into());
-                                mw.set_has_search_result(true);
+                            if matching_images.is_empty() {
+                                mw.set_status_message(format!("未找到孔位结果为 {} 的图片", hole_result).into());
+                                mw.set_status_success(false);
                             } else {
-                                mw.set_search_result("未找到匹配图片".into());
-                                mw.set_has_search_result(true);
+                                mw.set_status_message(format!("找到 {} 张匹配图片", matching_images.len()).into());
+                                mw.set_status_success(true);
                             }
+                            
+                            // 更新候选图片列表
+                            let shared_images: Vec<slint::SharedString> = matching_images.into_iter().map(|s| s.into()).collect();
+                            mw.set_candidate_images(shared_images.as_slice().into());
                         }
                     }
                 }
@@ -1966,27 +2204,50 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Some(app) = weak_for_confirm.upgrade() {
                     if let Some(mw) = match_weak.upgrade() {
                         let sample_id = mw.get_sample_id().to_string();
-                        let image_name = mw.get_image_name().to_string();
-                        let search_result = mw.get_search_result().to_string();
+                        let matched_image = mw.get_matched_image().to_string();
+                        let new_hole_result = mw.get_new_hole_result().to_string();
                         
                         if sample_id.is_empty() {
+                            mw.set_status_message("样本ID为空".into());
+                            mw.set_status_success(false);
                             return;
                         }
                         
-                        // 使用搜索到的图片或当前图片
-                        let target_image = if !search_result.is_empty() && search_result != "未找到匹配图片" {
-                            search_result
+                        if matched_image.is_empty() {
+                            mw.set_status_message("请选择要匹配的图片".into());
+                            mw.set_status_success(false);
+                            return;
+                        }
+                        
+                        // 验证孔位结果格式：最多7个逗号（8个孔位）
+                        let comma_count = new_hole_result.matches(',').count();
+                        let validated_hole_result = if comma_count > 7 {
+                            // 截断到第7个逗号后一个字符
+                            let mut pos = 0;
+                            let mut count = 0;
+                            for (i, c) in new_hole_result.char_indices() {
+                                if c == ',' {
+                                    count += 1;
+                                    if count == 7 {
+                                        pos = i + 2; // 逗号后一个字符
+                                        break;
+                                    }
+                                }
+                            }
+                            if pos > 0 && pos <= new_hole_result.len() {
+                                new_hole_result[..pos].to_string()
+                            } else {
+                                new_hole_result
+                            }
                         } else {
-                            image_name
+                            new_hole_result
                         };
-                        
-                        if target_image.is_empty() {
-                            return;
-                        }
                         
                         // 获取计划信息
                         let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
                         if plan_name.is_empty() {
+                            mw.set_status_message("未选择计划".into());
+                            mw.set_status_success(false);
                             return;
                         }
                         
@@ -1998,8 +2259,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let _ = std::fs::create_dir_all(&final_dir);
                         }
                         
-                        let src_path = src_dir.join(&target_image);
-                        let dest_path = final_dir.join(&target_image);
+                        let src_path = src_dir.join(&matched_image);
+                        let dest_path = final_dir.join(&matched_image);
                         
                         if src_path.exists() {
                             let _ = std::fs::copy(&src_path, &dest_path);
@@ -2008,13 +2269,84 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         // 更新数据库中的sample_id
                         if let Ok(plan) = db_for_confirm.get_plan_by_name(&plan_name) {
                             if let Some(plan) = plan {
-                                if let Ok(Some(image)) = db_for_confirm.find_image_by_name(plan.id, &target_image) {
+                                if let Ok(Some(image)) = db_for_confirm.find_image_by_name(plan.id, &matched_image) {
                                     let _ = db_for_confirm.update_image_sample_id(image.id, Some(&sample_id));
+                                    
+                                    // 更新Excel行数据
+                                    let current_rows = app.global::<ui::ExcelPageAdapter>().get_current_excel_rows();
+                                    let mut rows: Vec<ui::ExcelRowData> = current_rows.iter().collect();
+                                    
+                                    // 查找包含该样本ID的行并更新matched_image
+                                    for row in rows.iter_mut() {
+                                        if row.sample_id.to_string() == sample_id {
+                                            row.matched_image = matched_image.clone().into();
+                                        }
+                                    }
+                                    
+                                    // 根据active-card更新对应的excel-rows
+                                    let active_card = app.global::<ui::ExcelPageAdapter>().get_active_card();
+                                    match active_card {
+                                        0 => app.global::<ui::ExcelPageAdapter>().set_excel_rows_abo(rows.as_slice().into()),
+                                        1 => app.global::<ui::ExcelPageAdapter>().set_excel_rows_as(rows.as_slice().into()),
+                                        2 => app.global::<ui::ExcelPageAdapter>().set_excel_rows_cm(rows.as_slice().into()),
+                                        _ => {}
+                                    }
+                                    app.global::<ui::ExcelPageAdapter>().set_current_excel_rows(rows.as_slice().into());
+                                    
+                                    mw.set_status_message(format!("匹配成功: {} -> {}", matched_image, sample_id).into());
+                                    mw.set_status_success(true);
+                                } else {
+                                    mw.set_status_message("数据库中未找到该图片".into());
+                                    mw.set_status_success(false);
                                 }
                             }
+                        } else {
+                            mw.set_status_message("未找到计划".into());
+                            mw.set_status_success(false);
                         }
                         
-                        eprintln!("手动匹配: {} -> {}", target_image, sample_id);
+                        eprintln!("手动匹配: {} -> {}", matched_image, sample_id);
+                    }
+                }
+            });
+            
+            // 设置预览图片回调
+            let weak_for_preview = app.as_weak();
+            let db_for_preview = db_clone.clone();
+            let base_dir_for_preview = base_dir_clone.clone();
+            let match_weak = match_window.as_weak();
+            match_window.on_preview_image(move || {
+                if let Some(app) = weak_for_preview.upgrade() {
+                    if let Some(mw) = match_weak.upgrade() {
+                        let matched_image = mw.get_matched_image().to_string();
+                        let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
+                        
+                        if matched_image.is_empty() || plan_name.is_empty() {
+                            return;
+                        }
+                        
+                        // 获取图片路径
+                        let src_dir = base_dir_for_preview.join("plans").join(&plan_name).join("priced");
+                        let image_path = src_dir.join(&matched_image);
+                        
+                        if image_path.exists() {
+                            // 加载图片并显示预览窗口
+                            if let Ok(image) = slint::Image::load_from_path(&image_path) {
+                                let preview_window = ui::ImagePreviewWindow::new().unwrap();
+                                preview_window.set_preview_image(image);
+                                preview_window.set_preview_image_name(matched_image.clone().into());
+                                
+                                // 设置关闭回调
+                                let preview_weak = preview_window.as_weak();
+                                preview_window.on_close_window(move || {
+                                    if let Some(pw) = preview_weak.upgrade() {
+                                        let _ = pw.window().hide();
+                                    }
+                                });
+                                
+                                preview_window.show().unwrap();
+                            }
+                        }
                     }
                 }
             });
@@ -2023,7 +2355,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let match_weak = match_window.as_weak();
             match_window.on_close_window(move || {
                 if let Some(mw) = match_weak.upgrade() {
-                    // 窗口会自动关闭
+                    let _ = mw.window().hide();
                 }
             });
             
