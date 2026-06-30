@@ -819,3 +819,39 @@ tokio::spawn(async move {
 - 组件文件从 `globals.slint` 导入全局单例
 - ImagePreviewWindow、ManualMatchWindow、App 保留在app.slint中
 **状态**：✅ 已完成
+
+## 阶段13: Excel匹配功能重构 ✅
+
+### 13.1 Emoji渲染问题修复
+**问题**：子组件中的emoji（如🗑️）显示为方块
+**原因**：带variation selector (U+FE0F) 的emoji在Slint子组件中无法渲染
+**解决方案**：
+1. 在子组件Text上添加 `font-family: "Segoe UI Emoji"`
+2. 替换为不带variation selector的emoji（🖼️→📸）
+**状态**：✅ 已完成
+
+### 13.2 ManualMatchWindow简化
+**需求**：简化手动匹配窗口，移除不必要的输入框
+**实现**：
+- 移除孔位结果和考察时间输入框
+- 仅显示原孔位结果（只读）+ 搜索孔位图片输入框
+- 新增候选图片列表，支持搜索和选择
+- 点击已选择图片名可预览图片
+**状态**：✅ 已完成
+
+### 13.3 Excel表格匹配按钮
+**需求**：在Excel表格每行末尾添加匹配按钮
+**实现**：
+- 新增"匹配"列，点击打开ManualMatchWindow
+- 匹配仅保存图片和样本ID绑定关系，不覆盖孔位结果
+**状态**：✅ 已完成
+
+### 13.4 搜索算法修复
+**问题**：用户输入的孔位结果带逗号，数据库存储不带逗号
+**解决方案**：搜索时移除逗号后比较
+**状态**：✅ 已完成
+
+### 13.5 取消按钮修复
+**问题**：取消按钮不响应
+**解决方案**：在on_close_window回调中调用 `window().hide()`
+**状态**：✅ 已完成
