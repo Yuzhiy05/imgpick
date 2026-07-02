@@ -146,7 +146,6 @@ export component ManagePage inherits Rectangle {
                             vertical-stretch: 1;
                             background: #fafafa;
                             border-radius: 4px;
-                            clip: true;
 
                             if ManagePageAdapter.categories.length == 0: Text {
                                 text: "暂无数据";
@@ -155,8 +154,13 @@ export component ManagePage inherits Rectangle {
                                 color: #999;
                             }
 
-                            if ManagePageAdapter.categories.length > 0: VerticalLayout {
-                                for category[i] in ManagePageAdapter.categories: ImageCategoryItem {
+                            if ManagePageAdapter.categories.length > 0: ScrollView {
+                                height: 100%;
+                                VerticalLayout {
+                                    spacing: 2px;
+                                    alignment: start;
+
+                                    for category[i] in ManagePageAdapter.categories: ImageCategoryItem {
                                     category-name: category.name;
                                     display-name: category.display-name;
                                     image-count: category.count;
