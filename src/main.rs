@@ -1277,7 +1277,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             if let Some(file_path) = file_dialog.pick_file() {
                 // 读取Excel预览数据
-                match excel_utils::read_excel_preview(&file_path, 10) {
+                match excel_utils::read_excel_preview(&file_path, 7, 21) {
                     Ok(preview_data) => {
                         // 创建并显示ExcelImportWindow
                         let import_window = ui::ExcelImportWindow::new().unwrap();

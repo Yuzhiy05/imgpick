@@ -377,7 +377,7 @@ pub fn write_excel_file(path: &Path, rows: &[Vec<String>]) -> Result<(), String>
 }
 
 /// 读取Excel文件预览数据（前几行）
-pub fn read_excel_preview(path: &Path, max_rows: usize) -> Result<ExcelPreviewData, String> {
+pub fn read_excel_preview(path: &Path, max_rows: usize, min_columns: usize) -> Result<ExcelPreviewData, String> {
     let mut workbook: Xlsx<_> = open_workbook(path)
         .map_err(|e| format!("Failed to open Excel file: {}", e))?;
     
@@ -396,7 +396,7 @@ pub fn read_excel_preview(path: &Path, max_rows: usize) -> Result<ExcelPreviewDa
         return Err("Excel文件为空".to_string());
     }
     
-    // 读取表头（第一行）
+    // 读取表头（第一行），确保至少读取min_columns列
     let mut headers = Vec::new();
     let header_row = &all_rows[0];
     for cell in header_row {
@@ -409,7 +409,12 @@ pub fn read_excel_preview(path: &Path, max_rows: usize) -> Result<ExcelPreviewDa
         headers.push(header);
     }
     
-    // 读取预览数据（从第二行开始，最多max_rows行）
+    // 如果表头列数不足，补充空列名
+    while headers.len() < min_columns {
+        headers.push(format!("列{}", headers.len() + 1));
+    }
+    
+    // 读取预览数据（从第二行开始，至少读取max_rows行）
     let mut rows = Vec::new();
     let data_start_row = 1;
     let data_end_row = (data_start_row + max_rows).min(all_rows.len());
@@ -418,19 +423,17 @@ pub fn read_excel_preview(path: &Path, max_rows: usize) -> Result<ExcelPreviewDa
         let row = &all_rows[i];
         let mut row_data = Vec::new();
         
-        for (j, cell) in row.iter().enumerate() {
-            if j >= headers.len() {
-                break;
-            }
-            
+        // 读取该行的所有列，直到min_columns
+        for j in 0..headers.len() {
+            let cell = row.get(j);
             let value = match cell {
-                CellData::String(s) => s.clone(),
-                CellData::Float(f) => f.to_string(),
-                CellData::Int(i) => i.to_string(),
-                CellData::Bool(b) => b.to_string(),
-                CellData::Error(e) => format!("Error: {:?}", e),
-                CellData::Empty => String::new(),
-                CellData::DateTime(dt) => {
+                Some(CellData::String(s)) => s.clone(),
+                Some(CellData::Float(f)) => f.to_string(),
+                Some(CellData::Int(i)) => i.to_string(),
+                Some(CellData::Bool(b)) => b.to_string(),
+                Some(CellData::Error(e)) => format!("Error: {:?}", e),
+                Some(CellData::Empty) => String::new(),
+                Some(CellData::DateTime(dt)) => {
                     let value = dt.as_f64();
                     let excel_epoch = chrono::NaiveDate::from_ymd_opt(1899, 12, 30).unwrap();
                     let days = value as i64;
