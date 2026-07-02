@@ -1285,10 +1285,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         import_window.set_file_name(file_path.file_name().unwrap_or_default().to_string_lossy().to_string().into());
                         import_window.set_total_row_count(preview_data.total_count as i32);
                         
-                        // 设置可用列
+                        // 设置可用列（Excel风格：A(1): 列名）
                         let columns: Vec<SharedString> = preview_data.headers.iter()
                             .enumerate()
-                            .map(|(i, h)| format!("{}: {}", i + 1, h).into())
+                            .map(|(i, h)| {
+                                let col_letter = (b'A' + (i % 26) as u8) as char;
+                                format!("{}({}): {}", col_letter, i + 1, h).into()
+                            })
                             .collect();
                         import_window.set_available_columns(columns.as_slice().into());
                         
@@ -1332,25 +1335,49 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let db_clone_for_confirm = db_clone.clone();
                         let base_dir_for_confirm = base_dir_clone.clone();
                         let file_path_for_confirm = file_path.clone();
+                        let import_window_weak = import_window.as_weak();
                         
                         import_window.on_confirm_import(move || {
                             if let Some(app) = weak_for_confirm.upgrade() {
-                                // 获取import_window的弱引用
-                                // 注意：这里需要从app获取，但由于回调已注册，可以直接使用全局状态
-                                // 获取用户选择的列映射（从import_window的属性中读取）
-                                // 由于on_confirm_import回调中无法直接访问import_window，
-                                // 我们需要在回调中通过全局状态获取这些值
-                                // 暂时使用默认值，后续可以通过ExcelPageAdapter传递
-                                
-                                let target_card = app.global::<ui::ExcelPageAdapter>().get_active_card();
-                                
-                                // 使用现有的import_excel方法
-                                let plan_id = app.global::<ui::PricingPageAdapter>().get_plan_id();
-                                let excel_manager = excel_manager::ExcelManager::new(db_clone_for_confirm.clone());
-                                let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
-                                let final_dir = base_dir_for_confirm.join("plans").join(&plan_name).join("final");
-                                
-                                match excel_manager.import_excel(plan_id as i64, &file_path_for_confirm) {
+                                // 获取用户选择的列映射
+                                if let Some(import_win) = import_window_weak.upgrade() {
+                                    let sample_id_col = import_win.get_sample_id_column().to_string();
+                                    let hole_result_start = import_win.get_hole_result_start_column().to_string();
+                                    let hole_result_end = import_win.get_hole_result_end_column().to_string();
+                                    let test_time_col = import_win.get_test_time_column().to_string();
+                                    let target_card = import_win.get_target_card();
+                                    
+                                    // 解析列索引（格式: "A(1): 列名"）
+                                    let parse_col_index = |text: &str| -> Option<usize> {
+                                        text.split('(').nth(1)?
+                                            .split(')').next()?
+                                            .parse::<usize>().ok()
+                                            .map(|i| i - 1) // 转换为0-based索引
+                                    };
+                                    
+                                    let sample_id_idx = parse_col_index(&sample_id_col);
+                                    let hole_start_idx = parse_col_index(&hole_result_start);
+                                    let hole_end_idx = parse_col_index(&hole_result_end);
+                                    let test_time_idx = parse_col_index(&test_time_col);
+                                    
+                                    eprintln!("列映射: 样本编号={:?}, 孔位起始={:?}, 孔位结束={:?}, 考察时间={:?}", 
+                                        sample_id_idx, hole_start_idx, hole_end_idx, test_time_idx);
+                                    
+                                    // 使用列映射参数导入Excel
+                                    let plan_id = app.global::<ui::PricingPageAdapter>().get_plan_id();
+                                    let excel_manager = excel_manager::ExcelManager::new(db_clone_for_confirm.clone());
+                                    let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
+                                    let final_dir = base_dir_for_confirm.join("plans").join(&plan_name).join("final");
+                                    
+                                    // 使用新的带列映射的导入方法
+                                    match excel_manager.import_excel_with_mapping(
+                                        plan_id as i64, 
+                                        &file_path_for_confirm,
+                                        sample_id_idx,
+                                        hole_start_idx,
+                                        hole_end_idx,
+                                        test_time_idx,
+                                    ) {
                                     Ok(data) => {
                                         let count = data.len();
                                         
@@ -1458,6 +1485,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         );
                                     }
                                 }
+                                } // 关闭 if let Some(import_win)
                             }
                         });
                         

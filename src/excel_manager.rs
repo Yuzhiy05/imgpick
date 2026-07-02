@@ -38,6 +38,46 @@ impl ExcelManager {
         Ok(imported_data)
     }
 
+    /// 使用列映射导入Excel
+    pub fn import_excel_with_mapping(
+        &self,
+        plan_id: i64,
+        file_path: &Path,
+        sample_id_col: Option<usize>,
+        hole_result_start: Option<usize>,
+        hole_result_end: Option<usize>,
+        test_time_col: Option<usize>,
+    ) -> Result<Vec<ExcelData>, String> {
+        if !file_path.exists() {
+            return Err("Excel文件不存在".to_string());
+        }
+
+        let rows = excel_utils::read_excel_file_with_mapping(
+            file_path,
+            sample_id_col,
+            hole_result_start,
+            hole_result_end,
+            test_time_col,
+        )?;
+        let mut imported_data = Vec::new();
+
+        for row in rows {
+            let id = self.db.create_excel_data(plan_id, &row.sample_id, &serde_json::to_string(&row.data).unwrap_or_default())
+                .map_err(|e| format!("保存Excel数据失败: {}", e))?;
+
+            let data = ExcelData {
+                id,
+                plan_id,
+                sample_id: row.sample_id,
+                data_json: serde_json::to_string(&row.data).unwrap_or_default(),
+            };
+
+            imported_data.push(data);
+        }
+
+        Ok(imported_data)
+    }
+
     pub fn get_excel_data(&self, plan_id: i64) -> Result<Vec<ExcelData>, String> {
         self.db.get_excel_data_by_plan(plan_id)
             .map_err(|e| format!("获取Excel数据失败: {}", e))

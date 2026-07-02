@@ -466,6 +466,196 @@ pub fn read_excel_preview(path: &Path, max_rows: usize, min_columns: usize) -> R
     })
 }
 
+/// 读取Excel文件（支持列映射）
+pub fn read_excel_file_with_mapping(
+    path: &Path,
+    sample_id_col: Option<usize>,
+    hole_result_start: Option<usize>,
+    hole_result_end: Option<usize>,
+    test_time_col: Option<usize>,
+) -> Result<Vec<ExcelRow>, String> {
+    let mut workbook: Xlsx<_> = open_workbook(path)
+        .map_err(|e| format!("Failed to open Excel file: {}", e))?;
+    
+    let sheet_names = workbook.sheet_names().to_vec();
+    if sheet_names.is_empty() {
+        return Err("Excel file has no sheets".to_string());
+    }
+    
+    let sheet_name = &sheet_names[0];
+    let range = workbook.worksheet_range(sheet_name)
+        .map_err(|e| format!("Failed to read sheet: {}", e))?;
+    
+    let all_rows: Vec<Vec<CellData>> = range.rows().map(|row| row.to_vec()).collect();
+    
+    if all_rows.is_empty() {
+        return Err("Excel文件为空".to_string());
+    }
+    
+    // 尝试在前3行中找到列名行
+    let mut header_row_index = -1;
+    let mut headers = Vec::new();
+    
+    // 关键词列表
+    let keywords = ["sampleid", "sample_id", "样本编号", "samplebarcode", "样本id", 
+                     "孔位1", "孔位2", "孔位3", "考察时间", "检测时间"];
+    
+    // 尝试前3行（或更少，如果行数不足）
+    let max_check_rows = all_rows.len().min(3);
+    
+    for check_row in 0..max_check_rows {
+        let row = &all_rows[check_row];
+        let mut found_keywords = 0;
+        let mut temp_headers = Vec::new();
+        
+        for cell in row {
+            let header = match cell {
+                CellData::String(s) => s.clone(),
+                CellData::Float(f) => f.to_string(),
+                CellData::Int(i) => i.to_string(),
+                _ => String::new(),
+            };
+            
+            let header_lower = header.to_lowercase();
+            
+            // 检查是否包含关键词
+            for keyword in &keywords {
+                if header_lower.contains(keyword) {
+                    found_keywords += 1;
+                    break;
+                }
+            }
+            
+            temp_headers.push(header);
+        }
+        
+        // 如果找到至少2个关键词，认为这是列名行
+        if found_keywords >= 2 {
+            header_row_index = check_row as i32;
+            headers = temp_headers;
+            eprintln!("找到列名行: 第{}行，包含{}个关键词", check_row + 1, found_keywords);
+            break;
+        }
+    }
+    
+    // 如果没有找到列名行，使用第一行
+    if header_row_index == -1 {
+        eprintln!("警告: 未找到包含关键词的列名行，使用第一行作为列名");
+        header_row_index = 0;
+        
+        let row = &all_rows[0];
+        for cell in row {
+            let header = match cell {
+                CellData::String(s) => s.clone(),
+                CellData::Float(f) => f.to_string(),
+                CellData::Int(i) => i.to_string(),
+                _ => String::new(),
+            };
+            headers.push(header);
+        }
+    }
+    
+    // 使用用户指定的列索引，如果没有指定则使用默认逻辑
+    let exam_sample_col = sample_id_col.unwrap_or(0);
+    let test_time_col_idx = test_time_col;
+    
+    eprintln!("使用列映射: 样本编号列={}, 考察时间列={:?}", exam_sample_col, test_time_col_idx);
+    eprintln!("孔位结果范围: {:?} - {:?}", hole_result_start, hole_result_end);
+    
+    // 从列名行的下一行开始读取数据
+    let mut rows = Vec::new();
+    let data_start_row = (header_row_index + 1) as usize;
+    
+    for i in data_start_row..all_rows.len() {
+        let row = &all_rows[i];
+        let mut data = HashMap::new();
+        let mut sample_id = String::new();
+        let mut hole_result_parts: Vec<(i32, String)> = Vec::new();
+        let mut test_time = String::new();
+        
+        for (j, cell) in row.iter().enumerate() {
+            if j >= headers.len() {
+                break;
+            }
+            
+            let value = match cell {
+                CellData::String(s) => s.clone(),
+                CellData::Float(f) => f.to_string(),
+                CellData::Int(i) => i.to_string(),
+                CellData::Bool(b) => b.to_string(),
+                CellData::Error(e) => format!("Error: {:?}", e),
+                CellData::Empty => String::new(),
+                CellData::DateTime(dt) => {
+                    let value = dt.as_f64();
+                    let excel_epoch = chrono::NaiveDate::from_ymd_opt(1899, 12, 30).unwrap();
+                    let days = value as i64;
+                    let fractional = value - days as f64;
+                    let seconds = (fractional * 86400.0) as u32;
+                    
+                    if let Some(date) = excel_epoch.checked_add_days(chrono::Days::new(days as u64)) {
+                        let time = chrono::NaiveTime::from_num_seconds_from_midnight_opt(seconds, 0).unwrap_or_default();
+                        let datetime = date.and_time(time);
+                        datetime.format("%Y-%m-%d %H:%M:%S").to_string()
+                    } else {
+                        format!("InvalidDate({})", value)
+                    }
+                },
+                _ => String::new(),
+            };
+            
+            // 如果是样本编号列
+            if Some(j) == sample_id_col {
+                sample_id = value.clone();
+            }
+            
+            // 检查是否在孔位结果范围内
+            if let (Some(start), Some(end)) = (hole_result_start, hole_result_end) {
+                if j >= start && j <= end {
+                    let hole_num = (j - start + 1) as i32;
+                    hole_result_parts.push((hole_num, value.clone()));
+                }
+            }
+            
+            // 如果是考察时间列
+            if Some(j) == test_time_col_idx {
+                test_time = value.clone();
+            }
+            
+            data.insert(headers[j].clone(), value);
+        }
+        
+        // 将孔位结果按孔位编号排序后合并为逗号分隔的字符串
+        if !hole_result_parts.is_empty() {
+            hole_result_parts.sort_by_key(|&(num, _)| num);
+            let hole_result: Vec<String> = hole_result_parts.iter().map(|(_, v)| v.clone()).collect();
+            let hole_result_str = hole_result.join(",");
+            data.insert("孔位结果".to_string(), hole_result_str.clone());
+        }
+        
+        // 保存考察时间
+        if !test_time.is_empty() {
+            data.insert("考察时间".to_string(), test_time.clone());
+        }
+        
+        if !sample_id.is_empty() {
+            rows.push(ExcelRow { sample_id, data });
+        } else {
+            eprintln!("警告: 第{}行样本编号为空，已跳过", i + 1);
+        }
+    }
+    
+    if rows.is_empty() {
+        return Err(format!(
+            "未找到有效数据行。表头列: {:?}，请确保Excel文件包含'样本编号'列",
+            headers
+        ));
+    }
+    
+    eprintln!("成功读取 {} 条数据", rows.len());
+    
+    Ok(rows)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

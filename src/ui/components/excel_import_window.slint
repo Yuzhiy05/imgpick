@@ -22,7 +22,8 @@ export component ExcelImportWindow inherits Window {
     // 列映射配置
     in-out property <[string]> available-columns: [];
     in-out property <string> sample-id-column: "";
-    in-out property <string> hole-result-column: "";
+    in-out property <string> hole-result-start-column: "";
+    in-out property <string> hole-result-end-column: "";
     in-out property <string> test-time-column: "";
     
     // 预览数据
@@ -168,7 +169,7 @@ export component ExcelImportWindow inherits Window {
 
         // 列映射配置区
         Rectangle {
-            height: 135px;
+            height: 160px;
             background: #fafafa;
             border-width: 1px;
             border-color: #e0e0e0;
@@ -179,7 +180,7 @@ export component ExcelImportWindow inherits Window {
                 spacing: 8px;
 
                 Text {
-                    text: "列映射配置:";
+                    text: "列映射配置（选择单元格位置，如A1、B2）:";
                     font-size: 13px;
                     font-weight: 600;
                     color: #333;
@@ -211,7 +212,7 @@ export component ExcelImportWindow inherits Window {
                     Rectangle { horizontal-stretch: 1; }
                 }
 
-                // 孔位结果列
+                // 孔位结果列（范围选择）
                 HorizontalLayout {
                     height: 24px;
                     spacing: 8px;
@@ -226,14 +227,29 @@ export component ExcelImportWindow inherits Window {
 
                     ComboBox {
                         model: available-columns;
-                        current-value: hole-result-column;
+                        current-value: hole-result-start-column;
                         width: 200px;
                         selected(value) => {
-                            root.hole-result-column = value;
+                            root.hole-result-start-column = value;
                         }
                     }
 
-                    Rectangle { horizontal-stretch: 1; }
+                    Text {
+                        text: "至";
+                        font-size: 12px;
+                        color: #333;
+                        vertical-alignment: center;
+                        width: 20px;
+                    }
+
+                    ComboBox {
+                        model: available-columns;
+                        current-value: hole-result-end-column;
+                        width: 200px;
+                        selected(value) => {
+                            root.hole-result-end-column = value;
+                        }
+                    }
                 }
 
                 // 考察时间列
