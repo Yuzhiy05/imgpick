@@ -1309,6 +1309,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }).collect();
                         import_window.set_preview_rows(preview_rows.as_slice().into());
                         
+                        // 设置完整的预览数据（支持21列）
+                        let headers_shared: Vec<SharedString> = preview_data.headers.iter().map(|h| h.clone().into()).collect();
+                        import_window.set_preview_headers(headers_shared.as_slice().into());
+                        
+                        // 将二维数据展平为一维数组
+                        let mut cell_values: Vec<SharedString> = Vec::new();
+                        for row in &preview_data.rows {
+                            for cell in row {
+                                cell_values.push(cell.clone().into());
+                            }
+                        }
+                        import_window.set_preview_cell_values(cell_values.as_slice().into());
+                        import_window.set_preview_row_count(preview_data.rows.len() as i32);
+                        import_window.set_preview_col_count(preview_data.headers.len() as i32);
+                        
                         // 设置目标Card
                         import_window.set_target_card(active_card as i32);
                         

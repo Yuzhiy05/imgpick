@@ -28,6 +28,12 @@ export component ExcelImportWindow inherits Window {
     // 预览数据
     in-out property <[ExcelRowData]> preview-rows: [];
     
+    // 完整预览数据（支持21列）
+    in-out property <[string]> preview-headers: [];
+    in-out property <[string]> preview-cell-values: [];
+    in-out property <int> preview-row-count: 0;
+    in-out property <int> preview-col-count: 0;
+    
     // 目标Card选择
     in-out property <int> target-card: 0;
     in-out property <[string]> card-names: ["血型", "抗筛", "交叉配血"];
@@ -267,71 +273,50 @@ export component ExcelImportWindow inherits Window {
             clip: true;
 
             VerticalLayout {
-                // 表头
+                // 表头（支持水平滚动）
                 Rectangle {
                     height: 32px;
                     background: #e3f2fd;
 
-                    HorizontalLayout {
-                        Rectangle {
-                            width: 50px;
-                            height: 100%;
-                            Text {
-                                text: "序号";
-                                font-size: 12px;
-                                font-weight: 600;
-                                color: #1976D2;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                            }
-                        }
+                    if preview-headers.length == 0: Text {
+                        text: "请先选择Excel文件";
+                        font-size: 12px;
+                        color: #999;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
 
-                        Rectangle {
-                            width: 120px;
-                            height: 100%;
-                            Text {
-                                text: "样本编号";
-                                font-size: 12px;
-                                font-weight: 600;
-                                color: #1976D2;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                            }
-                        }
+                    if preview-headers.length > 0: ScrollView {
+                        height: 32px;
+                        horizontal-stretch: 1;
 
-                        Rectangle {
-                            width: 120px;
-                            height: 100%;
-                            Text {
-                                text: "孔位结果";
-                                font-size: 12px;
-                                font-weight: 600;
-                                color: #1976D2;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                            }
-                        }
+                        HorizontalLayout {
+                            height: 32px;
 
-                        Rectangle {
-                            horizontal-stretch: 1;
-                            height: 100%;
-                            Text {
-                                text: "考察时间";
-                                font-size: 12px;
-                                font-weight: 600;
-                                color: #1976D2;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
+                            for header in preview-headers: Rectangle {
+                                width: 80px;
+                                height: 100%;
+                                background: #e3f2fd;
+
+                                Text {
+                                    text: header;
+                                    font-size: 11px;
+                                    font-weight: 600;
+                                    color: #1976D2;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
                             }
                         }
                     }
                 }
 
-                // 数据行
+                // 数据行（支持水平和垂直滚动）
                 ScrollView {
                     vertical-stretch: 1;
 
-                    if preview-rows.length == 0: Text {
+                    if preview-cell-values.length == 0: Text {
                         text: "请先选择Excel文件";
                         font-size: 12px;
                         color: #999;
@@ -341,55 +326,19 @@ export component ExcelImportWindow inherits Window {
                     }
 
                     VerticalLayout {
-                        for row in preview-rows: Rectangle {
+                        for row-index in preview-row-count: Rectangle {
                             height: 28px;
-                            background: Math.mod(row.index, 2) == 0 ? #fafafa : white;
+                            background: Math.mod(row-index, 2) == 0 ? #fafafa : white;
 
                             HorizontalLayout {
-                                Rectangle {
-                                    width: 50px;
+                                for col-index in preview-col-count: Rectangle {
+                                    width: 80px;
                                     height: 100%;
-                                    Text {
-                                        text: row.index;
-                                        font-size: 11px;
-                                        color: #666;
-                                        horizontal-alignment: center;
-                                        vertical-alignment: center;
-                                    }
-                                }
+                                    background: Math.mod(row-index, 2) == 0 ? #fafafa : white;
 
-                                Rectangle {
-                                    width: 120px;
-                                    height: 100%;
                                     Text {
-                                        text: row.sample-id;
-                                        font-size: 11px;
-                                        color: #333;
-                                        horizontal-alignment: center;
-                                        vertical-alignment: center;
-                                        overflow: elide;
-                                    }
-                                }
-
-                                Rectangle {
-                                    width: 120px;
-                                    height: 100%;
-                                    Text {
-                                        text: row.hole-result;
-                                        font-size: 11px;
-                                        color: #333;
-                                        horizontal-alignment: center;
-                                        vertical-alignment: center;
-                                        overflow: elide;
-                                    }
-                                }
-
-                                Rectangle {
-                                    horizontal-stretch: 1;
-                                    height: 100%;
-                                    Text {
-                                        text: row.test-time;
-                                        font-size: 11px;
+                                        text: (row-index * preview-col-count + col-index) < preview-cell-values.length ? preview-cell-values[row-index * preview-col-count + col-index] : "";
+                                        font-size: 10px;
                                         color: #333;
                                         horizontal-alignment: center;
                                         vertical-alignment: center;
