@@ -58,7 +58,17 @@ imgpick/
     │   └── excel.rs    # Excel模型
     ├── ui/
     │   ├── mod.rs
-    │   └── app.slint   # Slint UI定义（所有页面）
+    │   ├── app.slint        # 主UI（导入+重新导出+App组件）
+    │   ├── structs.slint    # 数据结构定义
+    │   ├── globals.slint    # 全局单例（PlanPageAdapter等）
+    │   └── components/      # UI组件
+    │       ├── plan_item.slint
+    │       ├── plan_page.slint
+    │       ├── pricing_category_item.slint
+    │       ├── pricing_page.slint
+    │       ├── image_category_item.slint
+    │       ├── manage_page.slint
+    │       └── excel_page.slint
     ├── utils/
     │   ├── mod.rs
     │   ├── file_utils.rs
@@ -80,6 +90,11 @@ imgpick/
 - `ManagePage` - 图片管理页面
 - `ExcelPage` - Excel配对页面
 - `App` - 主窗口组件
+
+### ui/ 模块化结构（已拆分）
+- `structs.slint` - 数据结构定义
+- `globals.slint` - 全局单例（PlanPageAdapter等），注意 validate-input-combo 和 validate-type-combo 是 public
+- `components/` - 各页面组件独立文件
 
 ### main.rs
 - 初始化数据库
@@ -114,6 +129,11 @@ imgpick/
 - 子组件定义放在主组件之前
 - font-weight 使用数值（700）而非关键字（bold）
 - Rust 中使用 `#![allow(dead_code)]` 等抑制未使用代码警告
+
+## 已完成的工作
+1. **app.slint 模块化拆分**（commit 6184f9c）- 将2924行的app.slint拆分为多个模块文件
+2. **修复私有函数警告**（commit cc1c2c3）- globals.slint中 validate-input-combo 和 validate-type-combo 加了 public
+3. **图片源滚动修复**（commit 3fb9b1a）- 尝试修复manage_page中图片列表无法滚动的问题（可能未验证，需检查）
 
 ## 已知问题
 
