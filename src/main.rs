@@ -1493,6 +1493,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         app.global::<ui::ExcelPageAdapter>().set_status_message(
                                             format!("成功导入 {} 条数据，final目录有 {} 张图片", count, final_count).into()
                                         );
+                                        
+                                        // 关闭窗口
+                                        if let Some(win) = import_window_weak.upgrade() {
+                                            let _ = win.window().hide();
+                                        }
                                     }
                                     Err(e) => {
                                         app.global::<ui::ExcelPageAdapter>().set_status_message(
@@ -1505,10 +1510,105 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         });
                         
                         // 设置关闭窗口回调
-                        let weak_for_close = app.as_weak();
+                        let import_window_for_close = import_window.as_weak();
                         import_window.on_close_window(move || {
-                            if let Some(_app) = weak_for_close.upgrade() {
-                                // 窗口关闭时不需要做任何事情
+                            if let Some(win) = import_window_for_close.upgrade() {
+                                let _ = win.window().hide();
+                            }
+                        });
+                        
+                        // 设置选择文件回调（重新选择文件）
+                        let weak_for_select = app.as_weak();
+                        let import_window_for_select = import_window.as_weak();
+                        import_window.on_select_file(move || {
+                            // 打开文件对话框
+                            let file_dialog = rfd::FileDialog::new()
+                                .add_filter("Excel文件", &["xlsx", "xls"])
+                                .set_title("选择Excel文件");
+                            
+                            if let Some(file_path) = file_dialog.pick_file() {
+                                // 读取Excel预览数据
+                                match excel_utils::read_excel_preview(&file_path, 7, 21) {
+                                    Ok(preview_data) => {
+                                        if let Some(import_win) = import_window_for_select.upgrade() {
+                                            // 更新文件信息
+                                            import_win.set_file_path(file_path.display().to_string().into());
+                                            import_win.set_file_name(file_path.file_name().unwrap_or_default().to_string_lossy().to_string().into());
+                                            import_win.set_total_row_count(preview_data.total_count as i32);
+                                            
+                                            // 更新可用列（Excel风格）
+                                            let columns: Vec<SharedString> = preview_data.headers.iter()
+                                                .enumerate()
+                                                .map(|(i, h)| {
+                                                    let col_letter = (b'A' + (i % 26) as u8) as char;
+                                                    format!("{}({}): {}", col_letter, i + 1, h).into()
+                                                })
+                                                .collect();
+                                            import_win.set_available_columns(columns.as_slice().into());
+                                            
+                                            // 更新预览数据
+                                            let preview_rows: Vec<ui::ExcelRowData> = preview_data.rows.iter().enumerate().map(|(i, row): (usize, &Vec<String>)| {
+                                                let sample_id = row.get(0).cloned().unwrap_or_default();
+                                                let hole_result = row.get(1).cloned().unwrap_or_default();
+                                                let test_time = row.get(2).cloned().unwrap_or_default();
+                                                ui::ExcelRowData {
+                                                    index: (i + 1) as i32,
+                                                    sample_id: sample_id.into(),
+                                                    hole_result: hole_result.into(),
+                                                    test_time: test_time.into(),
+                                                    file_path: "".into(),
+                                                    matched_image: "".into(),
+                                                    category: "".into(),
+                                                }
+                                            }).collect();
+                                            import_win.set_preview_rows(preview_rows.as_slice().into());
+                                            
+                                            // 更新完整预览数据
+                                            let headers_shared: Vec<SharedString> = preview_data.headers.iter().map(|h| h.clone().into()).collect();
+                                            import_win.set_preview_headers(headers_shared.as_slice().into());
+                                            
+                                            let mut cell_values: Vec<SharedString> = Vec::new();
+                                            for row in &preview_data.rows {
+                                                for cell in row {
+                                                    cell_values.push(cell.clone().into());
+                                                }
+                                            }
+                                            import_win.set_preview_cell_values(cell_values.as_slice().into());
+                                            import_win.set_preview_row_count(preview_data.rows.len() as i32);
+                                            import_win.set_preview_col_count(preview_data.headers.len() as i32);
+                                            
+                                            // 更新列名字母
+                                            let col_letters: Vec<SharedString> = (0..preview_data.headers.len())
+                                                .map(|i| {
+                                                    if i < 26 {
+                                                        ((b'A' + i as u8) as char).to_string()
+                                                    } else {
+                                                        let first = ((b'A' + (i / 26 - 1) as u8) as char).to_string();
+                                                        let second = ((b'A' + (i % 26) as u8) as char).to_string();
+                                                        format!("{}{}", first, second)
+                                                    }
+                                                })
+                                                .map(|s| s.into())
+                                                .collect();
+                                            import_win.set_preview_col_letters(col_letters.as_slice().into());
+                                            
+                                            // 清除列映射选择
+                                            import_win.set_sample_id_column("".into());
+                                            import_win.set_hole_result_start_column("".into());
+                                            import_win.set_hole_result_end_column("".into());
+                                            import_win.set_test_time_column("".into());
+                                            
+                                            import_win.set_status_message("已重新选择文件".into());
+                                            import_win.set_status_success(true);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        if let Some(import_win) = import_window_for_select.upgrade() {
+                                            import_win.set_status_message(format!("读取Excel预览失败: {}", e).into());
+                                            import_win.set_status_success(false);
+                                        }
+                                    }
+                                }
                             }
                         });
                         
