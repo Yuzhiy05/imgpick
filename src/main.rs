@@ -18,6 +18,8 @@ use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::rc::Rc;
+use utils::excel_utils;
+use slint::SharedString;
 use std::collections::HashMap;
 use slint::ComponentHandle;
 use slint::{VecModel, LogicalSize, Model};
@@ -1274,121 +1276,189 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .set_title("选择Excel文件");
             
             if let Some(file_path) = file_dialog.pick_file() {
-                // 显示导入中状态
-                app.global::<ui::ExcelPageAdapter>().set_status_message("正在导入...".into());
-                
-                let excel_manager = excel_manager::ExcelManager::new(db_clone.clone());
-                let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
-                let final_dir = base_dir_clone.join("plans").join(&plan_name).join("final");
-                
-                // 计算Excel文件哈希（用于识别相同的Excel文件）
-                let excel_hash = calculate_file_hash(&file_path);
-                
-                match excel_manager.import_excel(plan_id as i64, &file_path) {
-                    Ok(data) => {
-                        let count = data.len();
+                // 读取Excel预览数据
+                match excel_utils::read_excel_preview(&file_path, 10) {
+                    Ok(preview_data) => {
+                        // 创建并显示ExcelImportWindow
+                        let import_window = ui::ExcelImportWindow::new().unwrap();
+                        import_window.set_file_path(file_path.display().to_string().into());
+                        import_window.set_file_name(file_path.file_name().unwrap_or_default().to_string_lossy().to_string().into());
+                        import_window.set_total_row_count(preview_data.total_count as i32);
                         
-                        // 将导入的数据转换为UI显示格式
-                        let mut excel_rows = Vec::new();
-                        for (i, excel_data) in data.iter().enumerate() {
-                            let json_value: serde_json::Value = serde_json::from_str(&excel_data.data_json)
-                                .unwrap_or_else(|_| serde_json::json!({}));
-                            
-                            // 尝试从不同字段名获取孔位结果
-                            let hole_result = json_value.get("hole_result")
-                                .or_else(|| json_value.get("孔位结果"))
-                                .or_else(|| json_value.get("testHoleResult"))
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
-                            
-                            // 尝试从不同字段名获取考察时间
-                            let test_time = json_value.get("test_time")
-                                .or_else(|| json_value.get("考察时间"))
-                                .or_else(|| json_value.get("testTime"))
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
-                            
-                            excel_rows.push(ui::ExcelRowData {
+                        // 设置可用列
+                        let columns: Vec<SharedString> = preview_data.headers.iter()
+                            .enumerate()
+                            .map(|(i, h)| format!("{}: {}", i + 1, h).into())
+                            .collect();
+                        import_window.set_available_columns(columns.as_slice().into());
+                        
+                        // 设置预览数据
+                        let preview_rows: Vec<ui::ExcelRowData> = preview_data.rows.iter().enumerate().map(|(i, row): (usize, &Vec<String>)| {
+                            let sample_id = row.get(0).cloned().unwrap_or_default();
+                            let hole_result = row.get(1).cloned().unwrap_or_default();
+                            let test_time = row.get(2).cloned().unwrap_or_default();
+                            ui::ExcelRowData {
                                 index: (i + 1) as i32,
-                                sample_id: excel_data.sample_id.clone().into(),
+                                sample_id: sample_id.into(),
                                 hole_result: hole_result.into(),
-                                test_time: test_time.clone().into(),
-                                file_path: test_time.clone().into(),
+                                test_time: test_time.into(),
+                                file_path: "".into(),
                                 matched_image: "".into(),
                                 category: "".into(),
-                            });
-                        }
-                        
-                        // 异步扫描final文件夹，恢复匹配状态
-                        let final_images = scan_final_folder(&final_dir);
-                        if !final_images.is_empty() {
-                            // 构建时间到文件名的映射
-                            let mut time_to_file: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-                            for (filename, _) in &final_images {
-                                if let Some(time_str) = parse_time_from_filename(filename) {
-                                    eprintln!("解析文件名: {} -> {}", filename, time_str);
-                                    time_to_file.insert(time_str, filename.clone());
-                                }
                             }
-                            
-                            // 恢复匹配状态（通过考察时间）
-                            let mut matched_count = 0;
-                            for row in excel_rows.iter_mut() {
-                                let test_time = row.test_time.to_string();
-                                eprintln!("查找匹配: test_time='{}'", test_time);
-                                if let Some(matched_filename) = time_to_file.get(&test_time) {
-                                    row.matched_image = matched_filename.clone().into();
-                                    matched_count += 1;
-                                    eprintln!("匹配成功: {} -> {}", test_time, matched_filename);
-                                }
-                            }
-                            
-                            eprintln!("恢复匹配状态: {} 张图片", matched_count);
-                        }
+                        }).collect();
+                        import_window.set_preview_rows(preview_rows.as_slice().into());
                         
-                        // 通过数据库中的sample_id恢复匹配状态
-                        if let Ok(plan) = db_clone.get_plan_by_name(&plan_name) {
-                            if let Some(plan) = plan {
-                                for row in excel_rows.iter_mut() {
-                                    let sample_id = row.sample_id.to_string();
-                                    if !sample_id.is_empty() && row.matched_image.to_string().is_empty() {
-                                        // 查找数据库中已匹配的图片
-                                        if let Ok(Some(image)) = db_clone.find_image_by_sample_id(plan.id, &sample_id) {
-                                            row.matched_image = image.file_name.clone().into();
-                                            eprintln!("从数据库恢复匹配: {} -> {}", sample_id, image.file_name);
+                        // 设置目标Card
+                        import_window.set_target_card(active_card as i32);
+                        
+                        // 注册回调
+                        let weak_for_confirm = app.as_weak();
+                        let db_clone_for_confirm = db_clone.clone();
+                        let base_dir_for_confirm = base_dir_clone.clone();
+                        let file_path_for_confirm = file_path.clone();
+                        
+                        import_window.on_confirm_import(move || {
+                            if let Some(app) = weak_for_confirm.upgrade() {
+                                // 获取import_window的弱引用
+                                // 注意：这里需要从app获取，但由于回调已注册，可以直接使用全局状态
+                                // 获取用户选择的列映射（从import_window的属性中读取）
+                                // 由于on_confirm_import回调中无法直接访问import_window，
+                                // 我们需要在回调中通过全局状态获取这些值
+                                // 暂时使用默认值，后续可以通过ExcelPageAdapter传递
+                                
+                                let target_card = app.global::<ui::ExcelPageAdapter>().get_active_card();
+                                
+                                // 使用现有的import_excel方法
+                                let plan_id = app.global::<ui::PricingPageAdapter>().get_plan_id();
+                                let excel_manager = excel_manager::ExcelManager::new(db_clone_for_confirm.clone());
+                                let plan_name = app.global::<ui::ManagePageAdapter>().get_plan_name().to_string();
+                                let final_dir = base_dir_for_confirm.join("plans").join(&plan_name).join("final");
+                                
+                                match excel_manager.import_excel(plan_id as i64, &file_path_for_confirm) {
+                                    Ok(data) => {
+                                        let count = data.len();
+                                        
+                                        // 将导入的数据转换为UI显示格式
+                                        let mut excel_rows = Vec::new();
+                                        for (i, excel_data) in data.iter().enumerate() {
+                                            let json_value: serde_json::Value = serde_json::from_str(&excel_data.data_json)
+                                                .unwrap_or_else(|_| serde_json::json!({}));
+                                            
+                                            // 尝试从不同字段名获取孔位结果
+                                            let hole_result = json_value.get("hole_result")
+                                                .or_else(|| json_value.get("孔位结果"))
+                                                .or_else(|| json_value.get("testHoleResult"))
+                                                .and_then(|v| v.as_str())
+                                                .unwrap_or("")
+                                                .to_string();
+                                            
+                                            // 尝试从不同字段名获取考察时间
+                                            let test_time = json_value.get("test_time")
+                                                .or_else(|| json_value.get("考察时间"))
+                                                .or_else(|| json_value.get("testTime"))
+                                                .and_then(|v| v.as_str())
+                                                .unwrap_or("")
+                                                .to_string();
+                                            
+                                            excel_rows.push(ui::ExcelRowData {
+                                                index: (i + 1) as i32,
+                                                sample_id: excel_data.sample_id.clone().into(),
+                                                hole_result: hole_result.into(),
+                                                test_time: test_time.clone().into(),
+                                                file_path: test_time.clone().into(),
+                                                matched_image: "".into(),
+                                                category: "".into(),
+                                            });
                                         }
+                                        
+                                        // 异步扫描final文件夹，恢复匹配状态
+                                        let final_images = scan_final_folder(&final_dir);
+                                        if !final_images.is_empty() {
+                                            // 构建时间到文件名的映射
+                                            let mut time_to_file: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+                                            for (filename, _) in &final_images {
+                                                if let Some(time_str) = parse_time_from_filename(filename) {
+                                                    eprintln!("解析文件名: {} -> {}", filename, time_str);
+                                                    time_to_file.insert(time_str, filename.clone());
+                                                }
+                                            }
+                                            
+                                            // 恢复匹配状态（通过考察时间）
+                                            let mut matched_count = 0;
+                                            for row in excel_rows.iter_mut() {
+                                                let test_time = row.test_time.to_string();
+                                                eprintln!("查找匹配: test_time='{}'", test_time);
+                                                if let Some(matched_filename) = time_to_file.get(&test_time) {
+                                                    row.matched_image = matched_filename.clone().into();
+                                                    matched_count += 1;
+                                                    eprintln!("匹配成功: {} -> {}", test_time, matched_filename);
+                                                }
+                                            }
+                                            
+                                            eprintln!("恢复匹配状态: {} 张图片", matched_count);
+                                        }
+                                        
+                                        // 通过数据库中的sample_id恢复匹配状态
+                                        if let Ok(plan) = db_clone_for_confirm.get_plan_by_name(&plan_name) {
+                                            if let Some(plan) = plan {
+                                                for row in excel_rows.iter_mut() {
+                                                    let sample_id = row.sample_id.to_string();
+                                                    if !sample_id.is_empty() && row.matched_image.to_string().is_empty() {
+                                                        // 查找数据库中已匹配的图片
+                                                        if let Ok(Some(image)) = db_clone_for_confirm.find_image_by_sample_id(plan.id, &sample_id) {
+                                                            row.matched_image = image.file_name.clone().into();
+                                                            eprintln!("从数据库恢复匹配: {} -> {}", sample_id, image.file_name);
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        
+                                        // 根据target_card更新对应的数据列表
+                                        match target_card {
+                                            0 => {
+                                                app.global::<ui::ExcelPageAdapter>().set_excel_rows_abo(excel_rows.as_slice().into());
+                                                app.global::<ui::ExcelPageAdapter>().set_current_excel_rows(excel_rows.as_slice().into());
+                                            }
+                                            1 => {
+                                                app.global::<ui::ExcelPageAdapter>().set_excel_rows_as(excel_rows.as_slice().into());
+                                                app.global::<ui::ExcelPageAdapter>().set_current_excel_rows(excel_rows.as_slice().into());
+                                            }
+                                            2 => {
+                                                app.global::<ui::ExcelPageAdapter>().set_excel_rows_cm(excel_rows.as_slice().into());
+                                                app.global::<ui::ExcelPageAdapter>().set_current_excel_rows(excel_rows.as_slice().into());
+                                            }
+                                            _ => {}
+                                        }
+                                        
+                                        let final_count = final_images.len();
+                                        app.global::<ui::ExcelPageAdapter>().set_status_message(
+                                            format!("成功导入 {} 条数据，final目录有 {} 张图片", count, final_count).into()
+                                        );
+                                    }
+                                    Err(e) => {
+                                        app.global::<ui::ExcelPageAdapter>().set_status_message(
+                                            format!("导入失败: {}", e).into()
+                                        );
                                     }
                                 }
                             }
-                        }
+                        });
                         
-                        // 根据active_card更新对应的数据列表
-                        match active_card {
-                            0 => {
-                                app.global::<ui::ExcelPageAdapter>().set_excel_rows_abo(excel_rows.as_slice().into());
-                                app.global::<ui::ExcelPageAdapter>().set_current_excel_rows(excel_rows.as_slice().into());
+                        // 设置关闭窗口回调
+                        let weak_for_close = app.as_weak();
+                        import_window.on_close_window(move || {
+                            if let Some(_app) = weak_for_close.upgrade() {
+                                // 窗口关闭时不需要做任何事情
                             }
-                            1 => {
-                                app.global::<ui::ExcelPageAdapter>().set_excel_rows_as(excel_rows.as_slice().into());
-                                app.global::<ui::ExcelPageAdapter>().set_current_excel_rows(excel_rows.as_slice().into());
-                            }
-                            2 => {
-                                app.global::<ui::ExcelPageAdapter>().set_excel_rows_cm(excel_rows.as_slice().into());
-                                app.global::<ui::ExcelPageAdapter>().set_current_excel_rows(excel_rows.as_slice().into());
-                            }
-                            _ => {}
-                        }
+                        });
                         
-                        let final_count = final_images.len();
-                        app.global::<ui::ExcelPageAdapter>().set_status_message(
-                            format!("成功导入 {} 条数据，final目录有 {} 张图片", count, final_count).into()
-                        );
+                        import_window.show().unwrap();
                     }
                     Err(e) => {
                         app.global::<ui::ExcelPageAdapter>().set_status_message(
-                            format!("导入失败: {}", e).into()
+                            format!("读取Excel预览失败: {}", e).into()
                         );
                     }
                 }

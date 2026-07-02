@@ -3,6 +3,13 @@ use std::path::Path;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
+pub struct ExcelPreviewData {
+    pub headers: Vec<String>,
+    pub rows: Vec<Vec<String>>,
+    pub total_count: usize,
+}
+
+#[derive(Debug, Clone)]
 pub struct ExcelRow {
     pub sample_id: String,
     pub data: HashMap<String, String>,
@@ -367,6 +374,93 @@ pub fn write_excel_file(path: &Path, rows: &[Vec<String>]) -> Result<(), String>
     }
     
     Ok(())
+}
+
+/// 读取Excel文件预览数据（前几行）
+pub fn read_excel_preview(path: &Path, max_rows: usize) -> Result<ExcelPreviewData, String> {
+    let mut workbook: Xlsx<_> = open_workbook(path)
+        .map_err(|e| format!("Failed to open Excel file: {}", e))?;
+    
+    let sheet_names = workbook.sheet_names().to_vec();
+    if sheet_names.is_empty() {
+        return Err("Excel file has no sheets".to_string());
+    }
+    
+    let sheet_name = &sheet_names[0];
+    let range = workbook.worksheet_range(sheet_name)
+        .map_err(|e| format!("Failed to read sheet: {}", e))?;
+    
+    let all_rows: Vec<Vec<CellData>> = range.rows().map(|row| row.to_vec()).collect();
+    
+    if all_rows.is_empty() {
+        return Err("Excel文件为空".to_string());
+    }
+    
+    // 读取表头（第一行）
+    let mut headers = Vec::new();
+    let header_row = &all_rows[0];
+    for cell in header_row {
+        let header = match cell {
+            CellData::String(s) => s.clone(),
+            CellData::Float(f) => f.to_string(),
+            CellData::Int(i) => i.to_string(),
+            _ => String::new(),
+        };
+        headers.push(header);
+    }
+    
+    // 读取预览数据（从第二行开始，最多max_rows行）
+    let mut rows = Vec::new();
+    let data_start_row = 1;
+    let data_end_row = (data_start_row + max_rows).min(all_rows.len());
+    
+    for i in data_start_row..data_end_row {
+        let row = &all_rows[i];
+        let mut row_data = Vec::new();
+        
+        for (j, cell) in row.iter().enumerate() {
+            if j >= headers.len() {
+                break;
+            }
+            
+            let value = match cell {
+                CellData::String(s) => s.clone(),
+                CellData::Float(f) => f.to_string(),
+                CellData::Int(i) => i.to_string(),
+                CellData::Bool(b) => b.to_string(),
+                CellData::Error(e) => format!("Error: {:?}", e),
+                CellData::Empty => String::new(),
+                CellData::DateTime(dt) => {
+                    let value = dt.as_f64();
+                    let excel_epoch = chrono::NaiveDate::from_ymd_opt(1899, 12, 30).unwrap();
+                    let days = value as i64;
+                    let fractional = value - days as f64;
+                    let seconds = (fractional * 86400.0) as u32;
+                    
+                    if let Some(date) = excel_epoch.checked_add_days(chrono::Days::new(days as u64)) {
+                        let time = chrono::NaiveTime::from_num_seconds_from_midnight_opt(seconds, 0).unwrap_or_default();
+                        let datetime = date.and_time(time);
+                        datetime.format("%Y-%m-%d %H:%M:%S").to_string()
+                    } else {
+                        format!("InvalidDate({})", value)
+                    }
+                },
+                _ => String::new(),
+            };
+            
+            row_data.push(value);
+        }
+        
+        rows.push(row_data);
+    }
+    
+    let total_count = all_rows.len() - 1; // 减去表头行
+    
+    Ok(ExcelPreviewData {
+        headers,
+        rows,
+        total_count,
+    })
 }
 
 #[cfg(test)]
