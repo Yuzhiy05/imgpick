@@ -1327,6 +1327,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         import_window.set_preview_row_count(preview_data.rows.len() as i32);
                         import_window.set_preview_col_count(preview_data.headers.len() as i32);
                         
+                        // 生成列名字母（A、B、C...Z、AA、AB...）
+                        let col_letters: Vec<SharedString> = (0..preview_data.headers.len())
+                            .map(|i| {
+                                if i < 26 {
+                                    ((b'A' + i as u8) as char).to_string()
+                                } else {
+                                    let first = ((b'A' + (i / 26 - 1) as u8) as char).to_string();
+                                    let second = ((b'A' + (i % 26) as u8) as char).to_string();
+                                    format!("{}{}", first, second)
+                                }
+                            })
+                            .map(|s| s.into())
+                            .collect();
+                        import_window.set_preview_col_letters(col_letters.as_slice().into());
+                        
                         // 设置目标Card
                         import_window.set_target_card(active_card as i32);
                         

@@ -32,6 +32,7 @@ export component ExcelImportWindow inherits Window {
     // 完整预览数据（支持21列）
     in-out property <[string]> preview-headers: [];
     in-out property <[string]> preview-cell-values: [];
+    in-out property <[string]> preview-col-letters: [];
     in-out property <int> preview-row-count: 0;
     in-out property <int> preview-col-count: 0;
     
@@ -279,7 +280,7 @@ export component ExcelImportWindow inherits Window {
             }
         }
 
-        // 预览表格区域
+        // 预览表格区域（Excel风格）
         Rectangle {
             vertical-stretch: 1;
             background: white;
@@ -289,9 +290,9 @@ export component ExcelImportWindow inherits Window {
             clip: true;
 
             VerticalLayout {
-                // 表头（支持水平滚动）
+                // 列名行（A、B、C...U）
                 Rectangle {
-                    height: 32px;
+                    height: 24px;
                     background: #e3f2fd;
 
                     if preview-headers.length == 0: Text {
@@ -302,27 +303,29 @@ export component ExcelImportWindow inherits Window {
                         vertical-alignment: center;
                     }
 
-                    if preview-headers.length > 0: ScrollView {
-                        height: 32px;
-                        horizontal-stretch: 1;
+                    if preview-headers.length > 0: HorizontalLayout {
+                        height: 24px;
 
-                        HorizontalLayout {
-                            height: 32px;
+                        // 左上角空白单元格
+                        Rectangle {
+                            width: 40px;
+                            height: 100%;
+                            background: #e3f2fd;
+                        }
 
-                            for header in preview-headers: Rectangle {
-                                width: 80px;
-                                height: 100%;
-                                background: #e3f2fd;
+                        // 列名（A、B、C...U）
+                        for letter in preview-col-letters: Rectangle {
+                            width: 80px;
+                            height: 100%;
+                            background: #e3f2fd;
 
-                                Text {
-                                    text: header;
-                                    font-size: 11px;
-                                    font-weight: 600;
-                                    color: #1976D2;
-                                    horizontal-alignment: center;
-                                    vertical-alignment: center;
-                                    overflow: elide;
-                                }
+                            Text {
+                                text: letter;
+                                font-size: 11px;
+                                font-weight: 600;
+                                color: #1976D2;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
                             }
                         }
                     }
@@ -342,24 +345,38 @@ export component ExcelImportWindow inherits Window {
                     }
 
                     VerticalLayout {
-                        for row-index in preview-row-count: Rectangle {
+                        for row-index in preview-row-count: HorizontalLayout {
                             height: 28px;
-                            background: Math.mod(row-index, 2) == 0 ? #fafafa : white;
 
-                            HorizontalLayout {
-                                for col-index in preview-col-count: Rectangle {
-                                    width: 80px;
-                                    height: 100%;
-                                    background: Math.mod(row-index, 2) == 0 ? #fafafa : white;
+                            // 行号（1、2、3...7）
+                            Rectangle {
+                                width: 40px;
+                                height: 100%;
+                                background: #e3f2fd;
 
-                                    Text {
-                                        text: (row-index * preview-col-count + col-index) < preview-cell-values.length ? preview-cell-values[row-index * preview-col-count + col-index] : "";
-                                        font-size: 10px;
-                                        color: #333;
-                                        horizontal-alignment: center;
-                                        vertical-alignment: center;
-                                        overflow: elide;
-                                    }
+                                Text {
+                                    text: row-index + 1;
+                                    font-size: 11px;
+                                    font-weight: 600;
+                                    color: #1976D2;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+
+                            // 单元格数据
+                            for col-index in preview-col-count: Rectangle {
+                                width: 80px;
+                                height: 100%;
+                                background: Math.mod(row-index, 2) == 0 ? #fafafa : white;
+
+                                Text {
+                                    text: (row-index * preview-col-count + col-index) < preview-cell-values.length ? preview-cell-values[row-index * preview-col-count + col-index] : "";
+                                    font-size: 10px;
+                                    color: #333;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                    overflow: elide;
                                 }
                             }
                         }
