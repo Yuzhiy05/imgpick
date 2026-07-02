@@ -280,7 +280,7 @@ export component ExcelImportWindow inherits Window {
             }
         }
 
-        // 预览表格区域（Excel风格）
+        // 预览表格区域（列名作为第一行数据，水平滚动自然同步）
         Rectangle {
             vertical-stretch: 1;
             background: white;
@@ -289,38 +289,67 @@ export component ExcelImportWindow inherits Window {
             border-radius: 4px;
             clip: true;
 
-            VerticalLayout {
-                // 列名行（A、B、C...U）
-                Rectangle {
-                    height: 24px;
-                    background: #e3f2fd;
+            if preview-cell-values.length == 0: Text {
+                text: "请先选择Excel文件";
+                font-size: 12px;
+                color: #999;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
 
-                    if preview-headers.length == 0: Text {
-                        text: "请先选择Excel文件";
-                        font-size: 12px;
-                        color: #999;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
+            if preview-cell-values.length > 0: ScrollView {
+                vertical-stretch: 1;
+
+                VerticalLayout {
+                    // 第一行：列名（A、B、C...U + 列名）
+                    HorizontalLayout {
+                        height: 28px;
+
+                        // 行号（显示#）
+                        Rectangle {
+                            width: 40px;
+                            height: 100%;
+                            background: #bbdefb;
+
+                            Text {
+                                text: "#";
+                                font-size: 11px;
+                                font-weight: 700;
+                                color: #1565c0;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        // 列名字母
+                        for letter in preview-col-letters: Rectangle {
+                            width: 80px;
+                            height: 100%;
+                            background: #bbdefb;
+
+                            Text {
+                                text: letter;
+                                font-size: 11px;
+                                font-weight: 700;
+                                color: #1565c0;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
                     }
 
-                    if preview-headers.length > 0: HorizontalLayout {
-                        height: 24px;
+                    // 第二行：列标题名
+                    HorizontalLayout {
+                        height: 28px;
 
-                        // 左上角空白单元格
+                        // 行号（显示0）
                         Rectangle {
                             width: 40px;
                             height: 100%;
                             background: #e3f2fd;
-                        }
-
-                        // 列名（A、B、C...U）
-                        for letter in preview-col-letters: Rectangle {
-                            width: 80px;
-                            height: 100%;
-                            background: #e3f2fd;
 
                             Text {
-                                text: letter;
+                                text: "0";
                                 font-size: 11px;
                                 font-weight: 600;
                                 color: #1976D2;
@@ -328,56 +357,58 @@ export component ExcelImportWindow inherits Window {
                                 vertical-alignment: center;
                             }
                         }
-                    }
-                }
 
-                // 数据行（支持水平和垂直滚动）
-                ScrollView {
-                    vertical-stretch: 1;
+                        // 列标题名
+                        for header in preview-headers: Rectangle {
+                            width: 80px;
+                            height: 100%;
+                            background: #e3f2fd;
 
-                    if preview-cell-values.length == 0: Text {
-                        text: "请先选择Excel文件";
-                        font-size: 12px;
-                        color: #999;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                        y: 20px;
-                    }
-
-                    VerticalLayout {
-                        for row-index in preview-row-count: HorizontalLayout {
-                            height: 28px;
-
-                            // 行号（1、2、3...7）
-                            Rectangle {
-                                width: 40px;
-                                height: 100%;
-                                background: #e3f2fd;
-
-                                Text {
-                                    text: row-index + 1;
-                                    font-size: 11px;
-                                    font-weight: 600;
-                                    color: #1976D2;
-                                    horizontal-alignment: center;
-                                    vertical-alignment: center;
-                                }
+                            Text {
+                                text: header;
+                                font-size: 10px;
+                                font-weight: 600;
+                                color: #1976D2;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                overflow: elide;
                             }
+                        }
+                    }
 
-                            // 单元格数据
-                            for col-index in preview-col-count: Rectangle {
-                                width: 80px;
-                                height: 100%;
-                                background: Math.mod(row-index, 2) == 0 ? #fafafa : white;
+                    // 数据行（从第1行开始）
+                    for row-index in preview-row-count: HorizontalLayout {
+                        height: 28px;
 
-                                Text {
-                                    text: (row-index * preview-col-count + col-index) < preview-cell-values.length ? preview-cell-values[row-index * preview-col-count + col-index] : "";
-                                    font-size: 10px;
-                                    color: #333;
-                                    horizontal-alignment: center;
-                                    vertical-alignment: center;
-                                    overflow: elide;
-                                }
+                        // 行号
+                        Rectangle {
+                            width: 40px;
+                            height: 100%;
+                            background: Math.mod(row-index, 2) == 0 ? #e3f2fd : #f5f5f5;
+
+                            Text {
+                                text: row-index + 1;
+                                font-size: 11px;
+                                font-weight: 600;
+                                color: #1976D2;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        // 单元格数据
+                        for col-index in preview-col-count: Rectangle {
+                            width: 80px;
+                            height: 100%;
+                            background: Math.mod(row-index, 2) == 0 ? #fafafa : white;
+
+                            Text {
+                                text: (row-index * preview-col-count + col-index) < preview-cell-values.length ? preview-cell-values[row-index * preview-col-count + col-index] : "";
+                                font-size: 10px;
+                                color: #333;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                overflow: elide;
                             }
                         }
                     }
