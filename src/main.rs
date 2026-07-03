@@ -1069,6 +1069,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // 加载图片到ManagePage显示
                     match slint::Image::load_from_path(&path) {
                         Ok(img) => {
+                            // 输出窗口和图片大小信息（仅debug模式）
+                            #[cfg(debug_assertions)]
+                            {
+                                let window_size = app.window().size();
+                                eprintln!("=== 图片显示区域调试 ===");
+                                eprintln!("窗口大小: {}x{}", window_size.width, window_size.height);
+                                eprintln!("图片文件: {}", file_name);
+                            }
+                            
                             app.global::<ui::ManagePageAdapter>().set_selected_image_data(img.clone());
                             // 同时加载到PricingPage显示
                             app.global::<ui::PricingPageAdapter>().set_current_image_path(path_str.into());

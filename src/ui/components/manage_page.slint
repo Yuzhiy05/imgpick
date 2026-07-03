@@ -73,6 +73,7 @@ export component ManagePage inherits Rectangle {
         // 图片显示区域 + 图片文件集合
         Rectangle {
             vertical-stretch: 1;
+            min-height: 550px;
             background: #f0f0f0;
             border-radius: 4px;
             clip: true;
@@ -83,6 +84,7 @@ export component ManagePage inherits Rectangle {
                 // 图片显示区域 (70%)
                 Rectangle {
                     horizontal-stretch: 7;
+                    min-width: 450px;
                     background: white;
                     border-radius: 4px;
                     border-width: 1px;
@@ -104,6 +106,7 @@ export component ManagePage inherits Rectangle {
                             vertical-stretch: 1;
                             background: #fafafa;
                             border-radius: 4px;
+                            clip: true;
 
                             if ManagePageAdapter.selected-image-path == "": Text {
                                 text: "点击右侧图片名查看";
