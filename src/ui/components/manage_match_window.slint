@@ -1,0 +1,146 @@
+import { LineEdit } from "std-widgets.slint";
+
+export component ManageMatchWindow inherits Window {
+    title: "匹配图片";
+    background: white;
+    width: 400px;
+    height: 250px;
+
+    // 属性
+    in-out property <string> image-name: "";
+    in-out property <string> sample-id: "";
+    in-out property <string> status-message: "";
+    in-out property <bool> status-success: false;
+
+    callback close-window();
+    callback paste-sample-id();
+    callback confirm-match();
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 12px;
+
+        // 标题
+        Text {
+            text: "匹配图片: " + image-name;
+            font-size: 16px;
+            font-weight: 700;
+            color: #1976D2;
+            height: 28px;
+        }
+
+        // 样本ID输入
+        HorizontalLayout {
+            spacing: 8px;
+            height: 32px;
+
+            Text {
+                text: "样本ID:";
+                font-size: 13px;
+                color: #333;
+                vertical-alignment: center;
+                width: 60px;
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+                height: 28px;
+                background: white;
+                border-width: 1px;
+                border-color: #bdbdbd;
+                border-radius: 4px;
+                clip: true;
+
+                LineEdit {
+                    text: sample-id;
+                    width: parent.width;
+                    height: parent.height;
+                    placeholder-text: "输入或粘贴样本ID";
+                    edited(text) => {
+                        root.sample-id = text;
+                    }
+                }
+            }
+
+            Rectangle {
+                width: 60px;
+                height: 28px;
+                background: paste-touch.has-hover ? #c8e6c9 : #e8f5e9;
+                border-radius: 4px;
+
+                Text {
+                    text: "粘贴";
+                    font-size: 12px;
+                    color: #2e7d32;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                paste-touch := TouchArea {
+                    clicked => { root.paste-sample-id(); }
+                }
+            }
+        }
+
+        // 状态消息
+        if status-message != "": Rectangle {
+            height: 24px;
+            background: status-success ? #e8f5e9 : #ffebee;
+            border-radius: 4px;
+
+            Text {
+                text: status-message;
+                font-size: 11px;
+                color: status-success ? #2e7d32 : #c62828;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        Rectangle { vertical-stretch: 1; }
+
+        // 底部按钮
+        HorizontalLayout {
+            spacing: 12px;
+            height: 36px;
+
+            Rectangle {
+                horizontal-stretch: 1;
+                background: confirm-touch.has-hover ? #388e3c : #4caf50;
+                border-radius: 4px;
+
+                Text {
+                    text: "确认匹配";
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: white;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                confirm-touch := TouchArea {
+                    clicked => { root.confirm-match(); }
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+                background: cancel-touch.has-hover ? #d32f2f : #f44336;
+                border-radius: 4px;
+
+                Text {
+                    text: "取消";
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: white;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                cancel-touch := TouchArea {
+                    clicked => { root.close-window(); }
+                }
+            }
+        }
+    }
+}
